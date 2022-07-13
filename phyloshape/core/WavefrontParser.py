@@ -9,7 +9,7 @@ class WavefrontParser():
         self.file = open(filepath)
         self.lines = self.file.readlines()
         
-    def get_dataframe(self, tex_image_path):
+   def get_dataframe(self, tex_image_path):
         """Create a numpy array to store xyz vertex coordinates， uv texture coordinates, RGB values and HSV values"""
         # call the functions
         vertex_coords = self.parser_vertex_coords()
@@ -24,7 +24,6 @@ class WavefrontParser():
         # obtain image dimension
         width, height = img.size
         
-        
         # fill in the array row by row
         for row in range(len(df)):
             # add xyz and uv values
@@ -37,12 +36,39 @@ class WavefrontParser():
             pixel_x = int(vt_list[0]*width)
             pixel_y = int(vt_list[1]*height)
             rgb = list(img.getpixel((pixel_x,pixel_y)))
-            std_rgb = [i / 255 for i in rgb]
-            std_hsv = list(colorsys.rgb_to_hsv(std_rgb[0],std_rgb[1],std_rgb[2]))
+            hsv = self.rgb_to_hsv(rgb)
             
-            df[row] = v_list + vt_list + std_rgb + std_hsv
+            df[row] = v_list + vt_list + rgb + hsv
         
         return df    
+    
+    def rgb_to_hsv(self, rgb):
+        """Convert RGB to HSV color space"""
+        # read R,G,B values
+        r, g, b = rgb[0]/255.0, rgb[1]/255.0, rgb[2]/255.0
+        
+        mx = max(r, g, b)
+        mn = min(r, g, b)
+        df = mx-mn
+        
+        if mx == mn:
+            h = 0
+        elif mx == r:
+            h = (60 * ((g-b)/df) + 360) % 360
+        elif mx == g:
+            h = (60 * ((b-r)/df) + 120) % 360
+        elif mx == b:
+            h = (60 * ((r-g)/df) + 240) % 360
+        if mx == 0:
+            s = 0
+        else:
+            s = (df/mx)*100
+            
+        v = mx*100
+        
+        hsv = [int(h), int(s), int(v)]
+        
+        return hsv
     
     def parser_vertex_coords(self):
         """Parse file line by line and store vertex coordinates"""

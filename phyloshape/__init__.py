@@ -2,7 +2,7 @@
 
 """PhyloShape
 """
-from phyloshape.core.shape import VertexVectorMapper
+from phyloshape.shape import Shape, VertexVectorMapper
 
 
 __version__ = "0.0.0"

@@ -4,18 +4,13 @@
 
 """
 
-from loguru import logger
-from plyfile import PlyData, PlyElement
 from typing import (Tuple, List)
 from collections import OrderedDict
 from copy import deepcopy
-import numpy as np
 import random
+import numpy as np
 from numpy.typing import ArrayLike
-from phyloshape.utils import trans_vector_to_relative, trans_vector_to_absolute, rgb_to_hex
-
-
-logger = logger.bind(name="phyloshape")
+from phyloshape.utils import trans_vector_to_relative, trans_vector_to_absolute
 
 
 class VectorHandler:
@@ -319,62 +314,3 @@ class VertexVectorMapper:
 
     def get_lines_for_k3d_plot(self):
         return self.__vertex_tree.get_lines_for_k3d_plot()
-
-
-class Shape:
-    """Shape class for manipulating shapes.
-
-    Parameters
-    ----------
-    file_name
-    """
-    def __init__(self, file_name):
-        """Initialize a Shape from a file.
-
-        Formats:
-        PLY see https://pypi.org/project/plyfile/
-        """
-        self.raw_vertices = np.array([], dtype=np.float32)
-        self.face_indices = np.array([], dtype=np.uint32)
-        self.colors = np.array([], dtype=np.uint32)
-        if file_name.endswith(".ply"):
-            self.parse_ply(file_name)
-        else:
-            raise TypeError("PhyloShape currently only support PLY format!")
-
-    def parse_ply(self, file_name):
-        obj = PlyData.read(file_name)
-        # read the coordinates
-        self.raw_vertices = np.stack([obj["vertex"]["x"], obj["vertex"]["y"], obj["vertex"]["z"]], axis=1)
-        # read the colors as rgb, then convert it into hex
-        self.colors = np.stack([obj["vertex"]["red"], obj["vertex"]["green"], obj["vertex"]["blue"]], axis=1)
-        self.colors = rgb_to_hex(self.colors)
-        # read the face indices
-        self.face_indices = np.array(np.vstack(obj["face"]["vertex_indices"]), dtype=np.uint32)
-
-    #TODO multiple objects
-    def update_vertex_clusters(self):
-        self.vertex_clusters = []
-        vertices = sorted(self.vertex_info)
-        for this_vertex in vertices:
-            connecting_those = set()
-            for connected_set in self.vertex_info[this_vertex].connections.values():
-                for next_v, next_d in connected_set:
-                    for go_to_set, cluster in enumerate(self.vertex_clusters):
-                        if next_v in cluster:
-                            connecting_those.add(go_to_set)
-            if not connecting_those:
-                self.vertex_clusters.append({this_vertex})
-            elif len(connecting_those) == 1:
-                self.vertex_clusters[connecting_those.pop()].add(this_vertex)
-            else:
-                sorted_those = sorted(connecting_those, reverse=True)
-                self.vertex_clusters[sorted_those[-1]].add(this_vertex)
-                for go_to_set in sorted_those[:-1]:
-                    for that_vertex in self.vertex_clusters[go_to_set]:
-                        self.vertex_clusters[sorted_those[-1]].add(that_vertex)
-                    del self.vertex_clusters[go_to_set]
-
-
-
-

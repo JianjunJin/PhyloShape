@@ -12,3 +12,7 @@ Parse shape data to a Shape instance:
 >>> shape = phyloshape.Shape("...")
 
 """
+
+from phyloshape.shape.shape import Shape
+from phyloshape.shape.vectors import VertexVectorMapper
+

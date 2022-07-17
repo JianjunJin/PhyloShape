@@ -1,6 +1,8 @@
-PhyloShape
+PhyloShape (Under active development)
 ==========
-PhyloShape is a 3D model toolkit for morphology evolution analysis. PhyloShape could capture detailed geometric shapes, color variation, and possible covariances from 3D models, and in doing so, to provide more robust evidence in species classification. In addition, with the combination of phylogenetic tree, PhyloShape could reconstruct possible color evolution pattern and ancestral morphological shapes.
+PhyloShape is a 3D model toolkit for morphology evolution analysis.
+
+# Features
 
 
 # Installing
@@ -8,7 +10,6 @@ PhyloShape is a 3D model toolkit for morphology evolution analysis. PhyloShape c
 
 
 # Documentation
-
 
 
 

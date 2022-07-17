@@ -3,17 +3,16 @@
 """Core PhyloShape class object of the phyloshape package.
 
 """
-import os.path
-
 from loguru import logger
 from plyfile import PlyData, PlyElement
 from PIL import Image
 import numpy as np
-from phyloshape.utils import rgb_to_hex, PSIOError, find_image_file
+from phyloshape.utils import PSIOError, find_image_file
 logger = logger.bind(name="phyloshape")
 
-INT_TYPE = np.uint32
-FLOAT_TYPE = np.float32
+RGB_TYPE = np.uint8
+INDEX_TYPE = np.uint32
+COORD_TYPE = np.float32
 
 
 class Shape:
@@ -38,12 +37,17 @@ class Shape:
         :return Shape object
         """
         self.file_name = file_name
-        self.texture_image_file = texture_image_file if texture_image_file else find_image_file(file_name)
-        self.vertex_coords = np.array([], dtype=FLOAT_TYPE)  # 3*l
-        self.vertex_colors = np.array([], dtype=INT_TYPE)  # 3*l
-        self.face_v_indices = np.array([], dtype=INT_TYPE)  # 3*m
-        self.face_t_indices = np.array([], dtype=INT_TYPE)  # 3*m
-        self.texture_coords = np.array([], dtype=FLOAT_TYPE)  # 2*n
+        if texture_image_file:
+            self.texture_image_file = texture_image_file
+        elif file_name.endswith(".obj"):
+            self.texture_image_file = find_image_file(file_name)
+        else:
+            self.texture_image_file = None
+        self.vertex_coords = np.array([], dtype=COORD_TYPE)  # 3*l
+        self.vertex_colors = np.array([], dtype=RGB_TYPE)  # 3*l
+        self.face_v_indices = np.array([], dtype=INDEX_TYPE)  # 3*m
+        self.face_t_indices = np.array([], dtype=INDEX_TYPE)  # 3*m
+        self.texture_coords = np.array([], dtype=COORD_TYPE)  # 2*n
         self.texture_image_obj = None
         if file_name:
             # TODO check the existence of files if applicable
@@ -57,16 +61,16 @@ class Shape:
     def parse_ply(self, from_external_file: str = None):
         """
         :param from_external_file: optionally from outside file
-        :return:
         """
-        obj = PlyData.read(self.file_name)
+        file_name = from_external_file if from_external_file else self.file_name
+        obj = PlyData.read(file_name)
         # read the coordinates
         self.vertex_coords = np.stack([obj["vertex"]["x"], obj["vertex"]["y"], obj["vertex"]["z"]], axis=1)
         # read the vertex_colors as rgb, then convert it into hex
         self.vertex_colors = np.stack([obj["vertex"]["red"], obj["vertex"]["green"], obj["vertex"]["blue"]], axis=1)
-        self.vertex_colors = rgb_to_hex(self.vertex_colors)
+        # self.vertex_colors = rgb_to_hex(self.vertex_colors)
         # read the face indices
-        self.face_v_indices = np.array(np.vstack(obj["face"]["vertex_indices"]), dtype=INT_TYPE)
+        self.face_v_indices = np.array(np.vstack(obj["face"]["vertex_indices"]), dtype=INDEX_TYPE)
 
     def parse_obj(self, from_external_file: str = None, from_external_image: str = None):
         file_name = from_external_file if from_external_file else self.file_name
@@ -103,11 +107,11 @@ class Shape:
                     face_t_indices.append(this_t_indices)
         if image_file:
             self.texture_image_obj = Image.open(image_file)
-        self.vertex_coords = np.array(vertex_coords, dtype=FLOAT_TYPE)
-        self.vertex_colors = np.array(vertex_colors, dtype=FLOAT_TYPE)
-        self.face_v_indices = np.array(face_v_indices, dtype=INT_TYPE)
-        self.face_t_indices = np.array(face_t_indices, dtype=INT_TYPE)
-        self.texture_coords = np.array(texture_coords, dtype=FLOAT_TYPE)
+        self.vertex_coords = np.array(vertex_coords, dtype=COORD_TYPE)
+        self.vertex_colors = np.array(np.round(np.array(vertex_colors) * 255), dtype=RGB_TYPE)
+        self.face_v_indices = np.array(face_v_indices, dtype=INDEX_TYPE)
+        self.face_t_indices = np.array(face_t_indices, dtype=INDEX_TYPE)
+        self.texture_coords = np.array(texture_coords, dtype=COORD_TYPE)
 
     # #TODO multiple objects
     # def update_vertex_clusters(self):
@@ -131,4 +135,3 @@ class Shape:
     #                 for that_vertex in self.vertex_clusters[go_to_set]:
     #                     self.vertex_clusters[sorted_those[-1]].add(that_vertex)
     #                 del self.vertex_clusters[go_to_set]
-

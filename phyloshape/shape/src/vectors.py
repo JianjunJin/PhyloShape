@@ -16,7 +16,7 @@ from phyloshape.utils import trans_vector_to_relative, trans_vector_to_absolute
 class VectorHandler:
     """
     Used in VertexVectorMapper.
-    Unit class recording a single map between the vertex-face system and the absolute_vector system.
+    Unit class recording a single map between the vertices-face system and the absolute_vector system.
 
     """
     def __init__(
@@ -43,7 +43,7 @@ class VectorHandler:
 class VertexTree:
     """
     Used in VertexVectorMapper and used for k3d plotting.
-    Tree-like class recording the vertex connection map via the vectors.
+    Tree-like class recording the vertices connection map via the vectors.
 
     """
     def __init__(self, root_id: int = None):
@@ -127,7 +127,7 @@ class VertexTree:
 
 class VertexVectorMapper:
     """
-    Class recording all maps between the vertex-face system and the vector system
+    Class recording all maps between the vertices-face system and the vector system
     """
     def __init__(self,
                  face_indices: ArrayLike = None,
@@ -159,7 +159,7 @@ class VertexVectorMapper:
             self,
             triplets_list: ArrayLike or List[ArrayLike]):
         """
-        Build the maps between the vertex-face system and the vector system.
+        Build the maps between the vertices-face system and the vector system.
         We do it with a single start point to ensure self.to_vertices works properly.
 
         Parameters
@@ -284,11 +284,11 @@ class VertexVectorMapper:
             ArrayLike
         """
         # initialize with the first & second vectors
-        norm_v1 = np.linalg.norm(vertices[self.__vh_list[0].to_id] - vertices[self.__vh_list[0].from_id])
+        norm_v1 = np.linalg.norm(vertices[self.__vh_list[0].target_id] - vertices[self.__vh_list[0].from_id])
         vectors = [np.array([norm_v1, 0, 0])]
         # do the following vectors
         for vh in self.__vh_list[1:]:
-            vector_in_space = vertices[vh.to_id] - vertices[vh.from_id]
+            vector_in_space = vertices[vh.target_id] - vertices[vh.from_id]
             relative_vector = trans_vector_to_relative(vector_in_space, vertices[list(vh.from_face)])
             vectors.append(relative_vector)
         return np.array(vectors)
@@ -298,15 +298,15 @@ class VertexVectorMapper:
             "The length of the vectors must equals the length of absolute_vector handlers!"
         vertices = np.array([np.array([None, None, None])] * (len(vectors) + 1), dtype=np.float32)
         vertices[self.__vh_list[0].from_id] = [0., 0., 0.]
-        vertices[self.__vh_list[0].to_id] = vectors[0]
-        vertices[self.__vh_list[1].to_id] = vectors[0] + vectors[1]
+        vertices[self.__vh_list[0].target_id] = vectors[0]
+        vertices[self.__vh_list[1].target_id] = vectors[0] + vectors[1]
         for go_vct, vh in enumerate(self.__vh_list[2:]):
             relative_vector = vectors[go_vct]
             vector_in_space = trans_vector_to_absolute(relative_vector, vertices[list(vh.from_face)])
             if np.isnan(vertices[vh.from_id]).any():
-                raise ValueError(f"While building Vtx {vh.to_id}, Vtx {vh.from_id} is invalid {vertices[vh.from_id]}!")
+                raise ValueError(f"While building Vtx {vh.target_id}, Vtx {vh.from_id} is invalid {vertices[vh.from_id]}!")
             else:
-                vertices[vh.to_id] = vertices[vh.from_id] + vector_in_space
+                vertices[vh.target_id] = vertices[vh.from_id] + vector_in_space
         return np.array(vertices)
 
     def vh_list(self):

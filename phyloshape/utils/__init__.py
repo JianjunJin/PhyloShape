@@ -8,4 +8,5 @@
 from phyloshape.utils.src.vector_manipulator import *
 from phyloshape.utils.src.color_manipulator import *
 from phyloshape.utils.src.exceptions import *
+from phyloshape.utils.src.variables import *
 from phyloshape.utils.src.io import *

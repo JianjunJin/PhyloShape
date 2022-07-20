@@ -7,12 +7,11 @@ from loguru import logger
 from plyfile import PlyData, PlyElement
 from PIL import Image
 import numpy as np
-from phyloshape.utils import PSIOError, find_image_file
+from phyloshape.shape.src.face import Faces
+from phyloshape.shape.src.vertex import Vertices
+from phyloshape.shape.src.network import IdNetwork
+from phyloshape.utils import PSIOError, find_image_file, ID_TYPE, COORD_TYPE, RGB_TYPE
 logger = logger.bind(name="phyloshape")
-
-RGB_TYPE = np.uint8
-INDEX_TYPE = np.uint32
-COORD_TYPE = np.float32
 
 
 class Shape:
@@ -43,18 +42,18 @@ class Shape:
             self.texture_image_file = find_image_file(file_name)
         else:
             self.texture_image_file = None
-        self.vertex_coords = np.array([], dtype=COORD_TYPE)  # 3*l
-        self.vertex_colors = np.array([], dtype=RGB_TYPE)  # 3*l
-        self.face_v_indices = np.array([], dtype=INDEX_TYPE)  # 3*m
-        self.face_t_indices = np.array([], dtype=INDEX_TYPE)  # 3*m
-        self.texture_coords = np.array([], dtype=COORD_TYPE)  # 2*n
+        self.vertices = Vertices()
+        self.faces = Faces()
+        self.network = IdNetwork()
         self.texture_image_obj = None
         if file_name:
             # TODO check the existence of files if applicable
             if file_name.endswith(".ply"):
                 self.parse_ply()
+                self.__update_network()
             elif file_name.endswith(".obj"):
                 self.parse_obj()
+                self.__update_network()
             else:
                 raise TypeError("PhyloShape currently only support *.ply/*.obj files!")
 
@@ -65,20 +64,21 @@ class Shape:
         file_name = from_external_file if from_external_file else self.file_name
         obj = PlyData.read(file_name)
         # read the coordinates
-        self.vertex_coords = np.stack([obj["vertex"]["x"], obj["vertex"]["y"], obj["vertex"]["z"]], axis=1)
-        # read the vertex_colors as rgb, then convert it into hex
-        self.vertex_colors = np.stack([obj["vertex"]["red"], obj["vertex"]["green"], obj["vertex"]["blue"]], axis=1)
+        vertex_coords = np.stack([obj["vertex"]["x"], obj["vertex"]["y"], obj["vertex"]["z"]], axis=1)
+        # read the vertex_colors as rgb
+        vertex_colors = np.stack([obj["vertex"]["red"], obj["vertex"]["green"], obj["vertex"]["blue"]], axis=1)
         # self.vertex_colors = rgb_to_hex(self.vertex_colors)
+        self.vertices = self.faces.vertices = Vertices(coords=vertex_coords, colors=vertex_colors)
         # read the face indices
-        self.face_v_indices = np.array(np.vstack(obj["face"]["vertex_indices"]), dtype=INDEX_TYPE)
+        self.faces.vertex_ids = np.array(np.vstack(obj["face"]["vertex_indices"]), dtype=ID_TYPE)
 
     def parse_obj(self, from_external_file: str = None, from_external_image: str = None):
         file_name = from_external_file if from_external_file else self.file_name
         image_file = from_external_image if from_external_image else self.texture_image_file
-        vertex_coords = []  # store vertex coordinates
-        vertex_colors = []  # store vertex color
-        texture_coords = []  # store texture coordinates
-        face_v_indices = []  # vertex index triplet
+        vertex_coords = []  # store vertices coordinates
+        vertex_colors = []  # store vertices color
+        texture_anchor_coords = []  # store texture coordinates
+        face_v_indices = []  # vertices index triplet
         face_t_indices = []  # texture index triplet
         with open(file_name) as input_handler:
             go_l = 0
@@ -95,7 +95,7 @@ class Shape:
                     else:
                         raise PSIOError("invalid line " + str(go_l) + " at " + self.file_name)
                 elif line[0] == "vt":
-                    texture_coords.append([float(i) for i in line[1:3]])
+                    texture_anchor_coords.append([float(i) for i in line[1:3]])
                 elif line[0] == "f":
                     this_v_indices = []
                     this_t_indices = []
@@ -107,11 +107,20 @@ class Shape:
                     face_t_indices.append(this_t_indices)
         if image_file:
             self.texture_image_obj = Image.open(image_file)
-        self.vertex_coords = np.array(vertex_coords, dtype=COORD_TYPE)
-        self.vertex_colors = np.array(np.round(np.array(vertex_colors) * 255), dtype=RGB_TYPE)
-        self.face_v_indices = np.array(face_v_indices, dtype=INDEX_TYPE)
-        self.face_t_indices = np.array(face_t_indices, dtype=INDEX_TYPE)
-        self.texture_coords = np.array(texture_coords, dtype=COORD_TYPE)
+        self.vertices = Vertices(coords=vertex_coords,
+                                 colors=np.round(np.array(vertex_colors) * 255))
+        self.faces = Faces(vertex_ids=face_v_indices,
+                           vertices=self.vertices,
+                           texture_ids=face_t_indices,
+                           texture_anchor_coords=texture_anchor_coords,
+                           texture_image_obj=self.texture_image_obj)
+
+    def __update_network(self):
+        # generate the connection from edges of faces
+        nw_pairs = np.unique(np.concatenate((self.faces[:, 0:2], self.faces[:, 1:3], self.faces[:, :3:2])), axis=0)
+        # euclidean distance
+        nw_weights = np.sum((self.vertices[nw_pairs[:, 1]] - self.vertices[nw_pairs[:, 0]]) ** 2, axis=1) ** 0.5
+        self.network = IdNetwork(pairs=nw_pairs, edge_lens=nw_weights)
 
     # #TODO multiple objects
     # def update_vertex_clusters(self):

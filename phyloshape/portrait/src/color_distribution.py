@@ -5,7 +5,7 @@
 
 # Yue's original code
 # def get_dataframe(self, tex_image_path):
-#     """Create a numpy array to store xyz vertex coordinates， uv texture coordinates, RGB values and HSV values"""
+#     """Create a numpy array to store xyz vertices coordinates， uv texture coordinates, RGB values and HSV values"""
 #     # call the functions
 #     vertex_coords = self.__parser_vertex_coords()
 #     tex_coords = self.__parser_tex_coords()

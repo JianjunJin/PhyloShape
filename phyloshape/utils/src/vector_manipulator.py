@@ -40,7 +40,7 @@ def trans_vector_to_relative(
         ref_face_points: List[ArrayLike])\
         -> ArrayLike:
     """
-    This function transforms a relative_vector from its original __texture_anchor_coords to a new __texture_anchor_coords,
+    This function transforms a relative_vector from its original texture_anchor_percent_coords to a new texture_anchor_percent_coords,
     where the input reference face is on the xy plane and its perpendicular vector is on the positive z axis
 
     Parameters

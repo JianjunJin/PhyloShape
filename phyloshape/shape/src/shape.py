@@ -46,6 +46,7 @@ class Shape:
         self.faces = Faces()
         self.network = IdNetwork()
         self.texture_image_obj = None
+        self.texture_image_data = None
         if file_name:
             # TODO check the existence of files if applicable
             if file_name.endswith(".ply"):
@@ -77,7 +78,7 @@ class Shape:
         image_file = from_external_image if from_external_image else self.texture_image_file
         vertex_coords = []  # store vertices coordinates
         vertex_colors = []  # store vertices color
-        texture_anchor_coords = []  # store texture coordinates
+        texture_anchor_percent_coords = []  # store texture coordinates
         face_v_indices = []  # vertices index triplet
         face_t_indices = []  # texture index triplet
         with open(file_name) as input_handler:
@@ -95,7 +96,7 @@ class Shape:
                     else:
                         raise PSIOError("invalid line " + str(go_l) + " at " + self.file_name)
                 elif line[0] == "vt":
-                    texture_anchor_coords.append([float(i) for i in line[1:3]])
+                    texture_anchor_percent_coords.append([float(i) for i in line[1:3]])
                 elif line[0] == "f":
                     this_v_indices = []
                     this_t_indices = []
@@ -105,15 +106,20 @@ class Shape:
                         this_t_indices.append(int(t_))
                     face_v_indices.append(this_v_indices)
                     face_t_indices.append(this_t_indices)
+        # start with 1->0
+        face_v_indices = np.array(face_v_indices, dtype=ID_TYPE) - 1
+        face_t_indices = np.array(face_t_indices, dtype=ID_TYPE) - 1
+        # read image obj
         if image_file:
             self.texture_image_obj = Image.open(image_file)
+            self.texture_image_data = np.asarray(self.texture_image_obj)
         self.vertices = Vertices(coords=vertex_coords,
                                  colors=np.round(np.array(vertex_colors) * 255))
         self.faces = Faces(vertex_ids=face_v_indices,
                            vertices=self.vertices,
                            texture_ids=face_t_indices,
-                           texture_anchor_coords=texture_anchor_coords,
-                           texture_image_obj=self.texture_image_obj)
+                           texture_anchor_percent_coords=texture_anchor_percent_coords,
+                           texture_image_data=self.texture_image_data)
 
     def __update_network(self):
         # generate the connection from edges of faces

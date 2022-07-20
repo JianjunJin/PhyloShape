@@ -34,5 +34,8 @@ class Vertices:
             for coord in self.coords:
                 yield coord
 
+    def __len__(self):
+        return len(self.coords)
+
 
 

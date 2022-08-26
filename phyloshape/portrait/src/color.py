@@ -3,25 +3,35 @@
 
 """
 from phyloshape.shape.src.shape import Shape
-from phyloshape.utils import RGB_TYPE, OP_RGB_TYPE
+from phyloshape.utils import RGB_TYPE, OP_RGB_TYPE, rgb_to_hsv, rgb_to_hex
 from typing import Union, List, Dict
+from loguru import logger
 import numpy as np
+logger = logger.bind(name="phyloshape")
+
+from phyloshape.utils.src.process import ProgressLogger, ProgressText
 
 
 class ColorProfile:
     def __init__(self, shape: Shape):
         self.shape = shape
 
-    def color_variation_across_mesh(self,
-                                    dist_values: List[float],
-                                    n_start_vertices: int = 1000,
-                                    user_defined_vertices: List[int] = []):
+    # def color_component_across_vertices(self):
+    #     self.shape.vertices.colors
+
+    def color_variation_across_vertices(self,
+                                        dist_values: List[float],
+                                        n_start_vertices: int = 1000,
+                                        user_defined_vertices: List[int] = []):
         res_var_dict = {dist_group_: [] for dist_group_ in dist_values}
         shape = self.shape
         max_id = len(shape.vertices) - 1
         sim_num = n_start_vertices - len(user_defined_vertices)
         chosen_ids = list(np.random.randint(low=0, high=max_id, size=sim_num)) + user_defined_vertices
         dist_val_sort = sorted(dist_values, reverse=True)
+        logger.info("searching")
+        progress_1 = ProgressLogger(n_start_vertices)
+        progress_1a = ProgressText(n_start_vertices)
         for v_id in chosen_ids:
             # cutoff = max(dist_val_sort)
             path_info_list = shape.network.find_shortest_paths_from(v_id, cutoff=dist_val_sort[0])
@@ -44,9 +54,16 @@ class ColorProfile:
                 neighboring_colors = shape.vertices.colors[neighbor_ids]
                 color_vars = abs(np.array(neighboring_colors, dtype=OP_RGB_TYPE) - this_color)
                 res_var_dict[dist_group].append(np.array(np.max(color_vars, axis=0), dtype=RGB_TYPE))
+            progress_1.update()
+            progress_1a.update()
 
+        logger.info("summarizing")
+        progress_2 = ProgressLogger(len(dist_values))
+        progress_2a = ProgressText(len(dist_values))
         for dist_group, res_var in res_var_dict.items():
             res_var_dict[dist_group] = np.array(res_var, dtype=RGB_TYPE)
+            progress_2.update()
+            progress_2a.update()
 
         return res_var_dict
 

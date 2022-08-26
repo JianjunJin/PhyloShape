@@ -35,7 +35,7 @@ class Shape:
 
         :return Shape object
         """
-        self.file_name = file_name
+        self.file_name = str(file_name)
         if texture_image_file:
             self.texture_image_file = texture_image_file
         elif file_name.endswith(".obj"):
@@ -101,9 +101,12 @@ class Shape:
                     this_v_indices = []
                     this_t_indices = []
                     for v_t_pair in line[1:]:
-                        v_, t_ = v_t_pair.split("/")
-                        this_v_indices.append(int(v_))
-                        this_t_indices.append(int(t_))
+                        if "/" in v_t_pair:
+                            v_, t_ = v_t_pair.split("/")
+                            this_v_indices.append(int(v_))
+                            this_t_indices.append(int(t_))
+                        else:
+                            this_v_indices.append(int(v_t_pair))
                     face_v_indices.append(this_v_indices)
                     face_t_indices.append(this_t_indices)
         # start with 1->0
@@ -114,6 +117,7 @@ class Shape:
             self.texture_image_obj = Image.open(image_file)
             self.texture_image_data = np.asarray(self.texture_image_obj)
         self.vertices = Vertices(coords=vertex_coords,
+                                 # TODO check vertex_colors if it's None
                                  colors=np.round(np.array(vertex_colors) * 255))
         self.faces = Faces(vertex_ids=face_v_indices,
                            vertices=self.vertices,

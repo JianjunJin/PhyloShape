@@ -18,7 +18,7 @@ Create a ColorProfile instance with the shape:
 
 Generate color variation distrubtion:
 
->>> color_p.color_variation_across_mesh(dist_values=[0.01, 0.03, 0.05], n_start_vertices=500)
+>>> color_p.color_variation_across_vertices(dist_values=[0.01, 0.03, 0.05], n_start_vertices=500)
 
 """
 

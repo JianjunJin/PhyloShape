@@ -6,39 +6,60 @@ from numpy.typing import ArrayLike
 
 def rgb_to_hex(rgb_array: ArrayLike):
     """convert (2^8, 2^8, 2^8)-based rgb array to hex array"""
+    if rgb_array.shape[-1] != 3:
+        raise ValueError("Last dimension of input array must be 3; "
+                         "shape {} was found.".format(rgb_array.shape))
     rgb_array = np.asarray(rgb_array, dtype="uint32")
     return (rgb_array[:, 0] << 16) + (rgb_array[:, 1] << 8) + rgb_array[:, 2]
 
 
-def rgb_to_hsv(rgb):
-    """Convert RGB to HSV color space"""
-    # TODO improve
-    # 1. -> array
-    # 2. -> simpler function
+# converted from: https://github.com/matplotlib/matplotlib/blob/v3.5.2/lib/matplotlib/colors.py
+def rgb_to_hsv(rgb_array: ArrayLike):
+    """
+    Convert (2^8, 2^8, 2^8)-based rgb array to hsv array.
 
-    # read R,G,B values
-    r, g, b = rgb[0] / 255.0, rgb[1] / 255.0, rgb[2] / 255.0
+    Parameters
+    ----------
+    rgb_array : (..., 3) array-like
+       All values must be in the range [0, 1]
+    Returns
+    -------
+    (..., 3) ndarray
+       Colors converted to hsv values in range [0, 1]
+    """
+    rgb_array = np.array(rgb_array, dtype=np.float32) / 255.0
 
-    mx = max(r, g, b)
-    mn = min(r, g, b)
-    df = mx - mn
+    # check length of the last dimension, should be _some_ sort of rgb
+    if rgb_array.shape[-1] != 3:
+        raise ValueError("Last dimension of input array must be 3; "
+                         "shape {} was found.".format(rgb_array.shape))
 
-    if mx == mn:
-        h = 0
-    elif mx == r:
-        h = (60 * ((g - b) / df) + 360) % 360
-    elif mx == g:
-        h = (60 * ((b - r) / df) + 120) % 360
-    elif mx == b:
-        h = (60 * ((r - g) / df) + 240) % 360
+    in_shape = rgb_array.shape
+    rgb_array = np.array(
+        rgb_array, copy=False,
+        dtype=np.promote_types(rgb_array.dtype, np.float32),  # Don't work on ints.
+        ndmin=2,  # In case input was 1D.
+    )
+    out = np.zeros_like(rgb_array)
+    arr_max = rgb_array.max(-1)
+    ipos = arr_max > 0
+    delta = rgb_array.ptp(-1)
+    s = np.zeros_like(delta)
+    s[ipos] = delta[ipos] / arr_max[ipos]
+    ipos = delta > 0
+    # red is max
+    idx = (rgb_array[..., 0] == arr_max) & ipos
+    out[idx, 0] = (rgb_array[idx, 1] - rgb_array[idx, 2]) / delta[idx]
+    # green is max
+    idx = (rgb_array[..., 1] == arr_max) & ipos
+    out[idx, 0] = 2. + (rgb_array[idx, 2] - rgb_array[idx, 0]) / delta[idx]
+    # blue is max
+    idx = (rgb_array[..., 2] == arr_max) & ipos
+    out[idx, 0] = 4. + (rgb_array[idx, 0] - rgb_array[idx, 1]) / delta[idx]
 
-    if mx == 0:
-        s = 0
-    else:
-        s = (df / mx) * 100
+    out[..., 0] = (out[..., 0] / 6.0) % 1.0
+    out[..., 1] = s
+    out[..., 2] = arr_max
 
-    v = mx * 100
+    return out.reshape(in_shape)
 
-    hsv = [int(h), int(s), int(v)]
-
-    return hsv

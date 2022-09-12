@@ -13,8 +13,8 @@ Welcome to PhyloShape, an interactive toolkit for 3D model comparisons and ances
 3. our own Pedicularis data (but sadly no replicates of each species which is a downside of the ancestral reconstruction.
 
 Test data dir:\
-Test scripts dir:\ 
-Results:\
+Test scripts dir:\
+Results:
 
 ## Installing
 

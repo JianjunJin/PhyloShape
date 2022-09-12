@@ -8,9 +8,13 @@ Welcome to PhyloShape, an interactive toolkit for 3D model comparisons and ances
 4. **Interactive visualization**: select preferred visualization tools and embed results in powerpoints and papers
 
 ## Example
-Test data dir: 
-Test scripts dir: 
-Results: 
+1. simulated dataset
+2. previous empirical dataset
+3. our own Pedicularis data (but sadly no replicates of each species which is a downside of the ancestral reconstruction.
+
+Test data dir:\
+Test scripts dir:\ 
+Results:\
 
 ## Installing
 

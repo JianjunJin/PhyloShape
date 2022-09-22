@@ -21,18 +21,18 @@ class Vertices:
         assert len(self.coords) == len(self.colors)
 
     def __getitem__(self, item):
-        return self.coords[item]
+        return self.coords[item], self.colors[item]
 
     def __bool__(self):
         return bool(self.coords)
 
     def __iter__(self):
-        if self.coords and self.colors:
-            for coord, color in zip(self.coords and self.colors):
-                yield coord, color
-        else:
-            for coord in self.coords:
-                yield coord
+        # if self.coords and self.colors:
+        for coord, color in zip(self.coords and self.colors):
+            yield coord, color
+        # else:
+        #     for coord in self.coords:
+        #         yield coord
 
     def __len__(self):
         return len(self.coords)

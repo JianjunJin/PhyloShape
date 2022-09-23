@@ -1,4 +1,9 @@
 #!/usr/bin/env python
+
+"""Globals used for remembering dtypes.
+
+"""
+
 import numpy as np
 
 RGB_TYPE = np.uint8

@@ -11,6 +11,8 @@ import random
 import numpy as np
 from numpy.typing import ArrayLike
 from phyloshape.utils import trans_vector_to_relative, trans_vector_to_absolute
+from loguru import logger
+logger = logger.bind(name="phyloshape")
 
 
 class VectorHandler:
@@ -127,16 +129,17 @@ class VertexTree:
 
 class VertexVectorMapper:
     """
-    Class recording all maps between the vertices-face system and the vector system
+    Main Class recording all maps between the vertices-face system and the vector system
+
     """
     def __init__(self,
-                 face_indices: ArrayLike = None,
+                 vertices_ids_in_faces: ArrayLike = None,
                  random_seed: int = 0):
         """
 
         Parameters
         ----------
-        face_indices:
+        vertices_ids_in_faces:
             All faces must be from a single connected object.
         random_seed: int
             0: pre-order-like traverse
@@ -153,7 +156,7 @@ class VertexVectorMapper:
         #TODO I don't know why the random mode will be significantly smaller.
         # Should find out where it is and optimize it.
         self.random_seed = random_seed
-        self.__update(face_indices)
+        self.__update(vertices_ids_in_faces)
 
     def __update(
             self,
@@ -174,7 +177,7 @@ class VertexVectorMapper:
         random.seed(self.random_seed)
         triplets_set = set([tuple(tl) for tl in triplets_list])
         len_triplets = len(triplets_set)
-        print(f"{len_triplets} triplets input.")
+        logger.info(f"{len_triplets} triplets input.")
 
         for tri_ids in triplets_list:
             for single_id in tri_ids:
@@ -184,7 +187,7 @@ class VertexVectorMapper:
                     #   the_reference_triplet = id_related_triplets & self.__checked_triplets
                     # so we have to use set here to store the id_related_triplets
                 self.__id_to_triplets[single_id].add(tuple(tri_ids))
-        print(f"{len(self.__id_to_triplets)} vertices indexed.")
+        logger.info(f"{len(self.__id_to_triplets)} vertices indexed.")
 
         # have the first point id fixed in space
         if self.random_seed not in {0, -1}:
@@ -249,7 +252,7 @@ class VertexVectorMapper:
             # previous_triplet = this_triplet
             # checking_sf_indices = list(pending_sf_indices)
             # pending_sf_indices = []
-        print(f"{len(self.__checked_triplets)} triplets checked.")
+        logger.info(f"{len(self.__checked_triplets)} triplets checked.")
 
     def __build_vector(self, from_id, to_id):
         candidate_triplets = self.__id_to_triplets[from_id] & self.__checked_triplets
@@ -304,7 +307,8 @@ class VertexVectorMapper:
             relative_vector = vectors[go_vct]
             vector_in_space = trans_vector_to_absolute(relative_vector, vertices[list(vh.from_face)])
             if np.isnan(vertices[vh.from_id]).any():
-                raise ValueError(f"While building Vtx {vh.target_id}, Vtx {vh.from_id} is invalid {vertices[vh.from_id]}!")
+                raise ValueError(
+                    f"While building Vtx {vh.target_id}, Vtx {vh.from_id} is invalid {vertices[vh.from_id]}!")
             else:
                 vertices[vh.target_id] = vertices[vh.from_id] + vector_in_space
         return np.array(vertices)

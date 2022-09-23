@@ -1,12 +1,15 @@
 #!/usr/bin/env python
+
 """classes and functions for profiling shape colors
 
 """
+
 from phyloshape.shape.src.shape import Shape
 from phyloshape.utils import RGB_TYPE, OP_RGB_TYPE, rgb_to_hsv, rgb_to_hex
 from typing import Union, List, Dict
 from loguru import logger
 import numpy as np
+
 logger = logger.bind(name="phyloshape")
 
 from phyloshape.utils.src.process import ProgressLogger, ProgressText
@@ -19,25 +22,34 @@ class ColorProfile:
     # def color_component_across_vertices(self):
     #     self.shape.vertices.colors
 
-    def color_variation_across_vertices(self,
-                                        dist_values: List[float],
-                                        n_start_vertices: int = 1000,
-                                        user_defined_vertices: List[int] = []):
+    def color_variation_across_vertices(
+        self,
+        dist_values: List[float],
+        n_start_vertices: int = 1000,
+        user_defined_vertices: List[int] = [],
+    ):
         res_var_dict = {dist_group_: [] for dist_group_ in dist_values}
         shape = self.shape
         max_id = len(shape.vertices) - 1
         sim_num = n_start_vertices - len(user_defined_vertices)
-        chosen_ids = list(np.random.randint(low=0, high=max_id, size=sim_num)) + user_defined_vertices
+        chosen_ids = (
+            list(np.random.randint(low=0, high=max_id, size=sim_num))
+            + user_defined_vertices
+        )
         dist_val_sort = sorted(dist_values, reverse=True)
         logger.info("searching")
         progress_1 = ProgressLogger(n_start_vertices)
         progress_1a = ProgressText(n_start_vertices)
         for v_id in chosen_ids:
             # cutoff = max(dist_val_sort)
-            path_info_list = shape.network.find_shortest_paths_from(v_id, cutoff=dist_val_sort[0])
+            path_info_list = shape.network.find_shortest_paths_from(
+                v_id, cutoff=dist_val_sort[0]
+            )
             id_group_per_dist_range = {dist_group_: [] for dist_group_ in dist_val_sort}
             for p_info in path_info_list:
-                for go_d, dist_upper_bd in enumerate(dist_val_sort[:-1]): # the largest dist may contain the most points
+                for go_d, dist_upper_bd in enumerate(
+                    dist_val_sort[:-1]
+                ):  # the largest dist may contain the most points
                     dist_lower_bd = dist_val_sort[go_d + 1]
                     if p_info["len"] > dist_lower_bd:
                         id_group_per_dist_range[dist_upper_bd].append(p_info["to_id"])
@@ -50,10 +62,14 @@ class ColorProfile:
                 neighbor_ids = []
                 for add_dist_g in dist_val_sort[go_d:]:
                     neighbor_ids += id_group_per_dist_range[add_dist_g]
-                #TODO: temporarily use vertex color, use texture later
+                # TODO: temporarily use vertex color, use texture later
                 neighboring_colors = shape.vertices.colors[neighbor_ids]
-                color_vars = abs(np.array(neighboring_colors, dtype=OP_RGB_TYPE) - this_color)
-                res_var_dict[dist_group].append(np.array(np.max(color_vars, axis=0), dtype=RGB_TYPE))
+                color_vars = abs(
+                    np.array(neighboring_colors, dtype=OP_RGB_TYPE) - this_color
+                )
+                res_var_dict[dist_group].append(
+                    np.array(np.max(color_vars, axis=0), dtype=RGB_TYPE)
+                )
             progress_1.update()
             progress_1a.update()
 
@@ -66,12 +82,6 @@ class ColorProfile:
             progress_2a.update()
 
         return res_var_dict
-
-
-
-
-
-
 
 
 # Yue's original code

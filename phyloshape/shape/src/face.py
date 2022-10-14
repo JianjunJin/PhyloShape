@@ -11,6 +11,8 @@ from phyloshape.utils import ID_TYPE, COORD_TYPE, RGB_TYPE
 # from phyloshape.shape.src.vertex import Vertices
 from numpy.typing import ArrayLike
 from typing import Union, List, Generator
+from loguru import logger
+logger = logger.bind(name="phyloshape")
 
 
 class Faces:

@@ -50,10 +50,10 @@ class Shape:
             # TODO check the existence of files if applicable
             if file_name.endswith(".ply"):
                 self.parse_ply()
-                self.__update_network()
+                self.update_network()
             elif file_name.endswith(".obj"):
                 self.parse_obj()
-                self.__update_network()
+                self.update_network()
             else:
                 raise TypeError("PhyloShape currently only support *.ply/*.obj files!")
 
@@ -140,7 +140,7 @@ class Shape:
                            texture_image_data=self.texture_image_data)
         logger.trace("parsing {} finished.".format(file_name))
 
-    def __update_network(self):
+    def update_network(self):
         logger.trace("constructing network")
         # generate the connection from edges of faces
         nw_pairs = np.unique(np.concatenate((self.faces[:, 0:2], self.faces[:, 1:3], self.faces[:, :3:2])), axis=0)
@@ -192,68 +192,73 @@ class ShapeAlignment:
     TODO: is there a standard file format to record shape alignments?
     """
     def __init__(self):
-        self.__vertices_list = []
+        self._vertices_list = []
         self.__n_vertices = None
         self.__labels = []
-        self.__label_to_sample_id = {}
+        self._label_to_sample_id = {}
         self.faces = Faces()
         # self.network = IdNetwork()
 
     def __contains__(self, item):
         if isinstance(item, str):
-            return item in self.__label_to_sample_id
+            return item in self._label_to_sample_id
         else:
-            return item in self.__vertices_list  # TODO Shape.__eq__()
+            return item in self._vertices_list  # TODO Shape.__eq__()
 
     def __delitem__(self, item):
         if isinstance(item, str):
-            del_id = self.__label_to_sample_id[item]
+            del_id = self._label_to_sample_id[item]
             del self.__labels[del_id]
-            del self.__vertices_list[del_id]
+            del self._vertices_list[del_id]
             for lb in self.__labels[del_id:]:
-                self.__label_to_sample_id[lb] -= 1
+                self._label_to_sample_id[lb] -= 1
         elif isinstance(item, slice):
             del self.__labels[item]
-            del self.__vertices_list[item]
+            del self._vertices_list[item]
             self._update_index()
         elif isinstance(item, int):
             del self.__labels[item]
-            del self.__vertices_list[item]
+            del self._vertices_list[item]
             for lb in self.__labels[item:]:
-                self.__label_to_sample_id[lb] -= 1
+                self._label_to_sample_id[lb] -= 1
             self._update_index()
         else:
             raise TypeError(type(item))
 
     def __getitem__(self, item):
         if isinstance(item, str):
-            return item, self.__vertices_list[self.__label_to_sample_id[item]]
+            return item, self._vertices_list[self._label_to_sample_id[item]]
         else:
-            return list(zip(self.__labels[item], self.__vertices_list[item]))
+            if isinstance(item, slice):
+                return list(zip(self.__labels[item], self._vertices_list[item]))
+            else:
+                return self.__labels[item], self._vertices_list[item]
 
     def __iter__(self):
         for go_s, label in enumerate(self.__labels):
-            yield label, self.__vertices_list[go_s]
+            yield label, self._vertices_list[go_s]
 
     def __len__(self):
-        return len(self.__vertices_list)
+        return len(self._vertices_list)
 
     def _update_index(self):
-        self.__label_to_sample_id = {}
+        self._label_to_sample_id = {}
         for go_s, label in enumerate(self.__labels):
-            self.__label_to_sample_id[label] = go_s
+            self._label_to_sample_id[label] = go_s
 
     def append(self, label: str, sample: Vertices):
         # check duplicate label
-        assert label not in self.__label_to_sample_id, "Label %s existed in the alignment!" % label
-        self.__label_to_sample_id[label] = len(self.__labels) - 1
+        assert label not in self._label_to_sample_id, "Label %s existed in the alignment!" % label
+        self._label_to_sample_id[label] = len(self.__labels)  #TODO fix the bug by removing -1
         self.__labels.append(label)
         # check vertices shape
         if self.__n_vertices:
-            assert len(Vertices) == self.__n_vertices, "Unmatched Vertices dimension!"
+            assert len(sample) == self.__n_vertices, "Unmatched Vertices dimension!"
         else:
-            self.__n_vertices = len(Vertices)
-        self.__vertices_list.append(sample)
+            if self.faces:
+                assert len(sample) > np.amax(self.faces.vertex_ids), "Face ids out of range!"
+            self.__n_vertices = len(sample)
+        self._vertices_list.append(sample)
 
     def get_labels(self):
         return list(self.__labels)
@@ -268,7 +273,7 @@ class ShapeAlignment:
         while go_to < len(self.__labels):
             if self.__labels[go_to] in del_names:
                 del_names.remove(self.__labels[go_to])
-                del self.__vertices_list[go_to]
+                del self._vertices_list[go_to]
                 del self.__labels[go_to]
             else:
                 go_to += 1
@@ -283,7 +288,7 @@ class ShapeAlignment:
         return self.__n_vertices
 
     def n_samples(self):
-        return len(self.__vertices_list)
+        return len(self._vertices_list)
 
 
 

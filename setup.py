@@ -28,7 +28,7 @@ setup(
     install_requires=[
         "numpy",
         "scipy",
-        "sympy",
+        "symengine",
         "loguru",
         "plyfile",
         "toytree",  # temporarily

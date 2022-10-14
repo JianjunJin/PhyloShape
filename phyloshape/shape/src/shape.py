@@ -7,6 +7,8 @@ from loguru import logger
 from plyfile import PlyData, PlyElement
 from PIL import Image
 import numpy as np
+from copy import deepcopy
+from typing import Union
 from phyloshape.shape.src.face import Faces
 from phyloshape.shape.src.vertex import Vertices
 from phyloshape.shape.src.network import IdNetwork
@@ -17,9 +19,6 @@ logger = logger.bind(name="phyloshape")
 class Shape:
     """Shape class for manipulating shapes.
 
-    Parameters
-    ----------
-    file_name
     """
     def __init__(self,
                  file_name: str = None,
@@ -35,10 +34,10 @@ class Shape:
 
         :return Shape object
         """
-        self.file_name = str(file_name)
+        self.label = self.file_name = str(file_name) if file_name else ""
         if texture_image_file:
             self.texture_image_file = texture_image_file
-        elif file_name.endswith(".obj"):
+        elif self.file_name.endswith(".obj"):
             self.texture_image_file = find_image_file(file_name)
         else:
             self.texture_image_file = None
@@ -51,31 +50,46 @@ class Shape:
             # TODO check the existence of files if applicable
             if file_name.endswith(".ply"):
                 self.parse_ply()
-                self.__update_network()
+                self.update_network()
             elif file_name.endswith(".obj"):
                 self.parse_obj()
-                self.__update_network()
+                self.update_network()
             else:
                 raise TypeError("PhyloShape currently only support *.ply/*.obj files!")
+
+    def __repr__(self):
+        # TODO
+        raise NotImplementedError("TODO")
+
+    def __str__(self):
+        # TODO
+        raise NotImplementedError("TODO")
+
+    def __eq__(self, other):
+        # TODO
+        raise NotImplementedError("TODO")
 
     def parse_ply(self, from_external_file: str = None):
         """
         :param from_external_file: optionally from outside file
         """
         file_name = from_external_file if from_external_file else self.file_name
+        logger.trace("parsing {}".format(file_name))
         obj = PlyData.read(file_name)
         # read the coordinates
         vertex_coords = np.stack([obj["vertex"]["x"], obj["vertex"]["y"], obj["vertex"]["z"]], axis=1)
         # read the vertex_colors as rgb
         vertex_colors = np.stack([obj["vertex"]["red"], obj["vertex"]["green"], obj["vertex"]["blue"]], axis=1)
         # self.vertex_colors = rgb_to_hex(self.vertex_colors)
-        self.vertices = self.faces.vertices = Vertices(coords=vertex_coords, colors=vertex_colors)
+        self.vertices = Vertices(coords=vertex_coords, colors=vertex_colors)  # self.faces.vertices =
         # read the face indices
         self.faces.vertex_ids = np.array(np.vstack(obj["face"]["vertex_indices"]), dtype=ID_TYPE)
+        logger.trace("parsing {} finished.".format(file_name))
 
     def parse_obj(self, from_external_file: str = None, from_external_image: str = None):
         file_name = from_external_file if from_external_file else self.file_name
         image_file = from_external_image if from_external_image else self.texture_image_file
+        logger.trace("parsing {}".format(file_name))
         vertex_coords = []  # store vertices coordinates
         vertex_colors = []  # store vertices color
         texture_anchor_percent_coords = []  # store texture coordinates
@@ -120,37 +134,161 @@ class Shape:
                                  # TODO check vertex_colors if it's None
                                  colors=np.round(np.array(vertex_colors) * 255))
         self.faces = Faces(vertex_ids=face_v_indices,
-                           vertices=self.vertices,
+                           # vertices=self.vertices,
                            texture_ids=face_t_indices,
                            texture_anchor_percent_coords=texture_anchor_percent_coords,
                            texture_image_data=self.texture_image_data)
+        logger.trace("parsing {} finished.".format(file_name))
 
-    def __update_network(self):
+    def update_network(self):
+        logger.trace("constructing network")
         # generate the connection from edges of faces
         nw_pairs = np.unique(np.concatenate((self.faces[:, 0:2], self.faces[:, 1:3], self.faces[:, :3:2])), axis=0)
         # euclidean distance
-        nw_weights = np.sum((self.vertices[nw_pairs[:, 1]] - self.vertices[nw_pairs[:, 0]]) ** 2, axis=1) ** 0.5
+        nw_weights = \
+            np.sum((self.vertices.coords[nw_pairs[:, 1]] - self.vertices.coords[nw_pairs[:, 0]]) ** 2, axis=1) ** 0.5
         self.network = IdNetwork(pairs=nw_pairs, edge_lens=nw_weights)
+        logger.trace("constructing network finished.")
 
-    # #TODO multiple objects
-    # def update_vertex_clusters(self):
-    #     self.vertex_clusters = []
-    #     vertices = sorted(self.vertex_info)
-    #     for this_vertex in vertices:
-    #         connecting_those = set()
-    #         for connected_set in self.vertex_info[this_vertex].connections.values():
-    #             for next_v, next_d in connected_set:
-    #                 for go_to_set, cluster in enumerate(self.vertex_clusters):
-    #                     if next_v in cluster:
-    #                         connecting_those.add(go_to_set)
-    #         if not connecting_those:
-    #             self.vertex_clusters.append({this_vertex})
-    #         elif len(connecting_those) == 1:
-    #             self.vertex_clusters[connecting_those.pop()].add(this_vertex)
-    #         else:
-    #             sorted_those = sorted(connecting_those, reverse=True)
-    #             self.vertex_clusters[sorted_those[-1]].add(this_vertex)
-    #             for go_to_set in sorted_those[:-1]:
-    #                 for that_vertex in self.vertex_clusters[go_to_set]:
-    #                     self.vertex_clusters[sorted_those[-1]].add(that_vertex)
-    #                 del self.vertex_clusters[go_to_set]
+    def extract_component(self, component_id: Union[slice, int] = 0):
+        """Extract connected component(s) from a shape object
+
+        The connected components were sorted decreasingly by the number of vertices,
+        so that the first component (component_id=0) is the largest component.
+
+        :param component_id:
+        :return: Shape
+        """
+        sorted_components = sorted(self.network.find_unions(), key=lambda x: (-len(x), x))
+        if isinstance(component_id, int):
+            chosen_v_ids = sorted(sorted_components[component_id])
+        else:
+            chosen_v_ids = sorted(set.union(*sorted_components[component_id]))
+        new_shape = Shape()
+        # only keep the chosen vertex ids
+        new_shape.vertices.coords, new_shape.vertices.colors = self.vertices[chosen_v_ids]
+        # deepcopy the original faces object
+        new_shape.faces = deepcopy(self.faces)
+        # find the faces that contains any unwanted vertex ids, and assign the ids to rm_f_ids, then delete them
+        face_v_ids = new_shape.faces.vertex_ids
+        rm_f_ids = np.isin(face_v_ids, chosen_v_ids, invert=True).any(axis=1)
+        face_v_ids = np.delete(face_v_ids, rm_f_ids, axis=0)
+        # modify the v ids in the faces, because some vertices were removed
+        # using the np.unique() approach here will be much faster than using np.vectorize(dict.__getitem__)()
+        v_id_translator = {old_id: new_id for new_id, old_id in enumerate(chosen_v_ids)}
+        uniq, inv = np.unique(face_v_ids, return_inverse=True)
+        new_shape.faces.vertex_ids = np.array([v_id_translator[o_i] for o_i in uniq])[inv].reshape(face_v_ids.shape)
+        # also delete associated texture ids
+        new_shape.faces.texture_ids = np.delete(new_shape.faces.texture_ids, rm_f_ids, axis=0)
+        # TODO: check other new_shape.faces.texture_* attributes
+        #  may or may not in need of updating after extraction
+        return new_shape
+
+
+class ShapeAlignment:
+    """Shape Alignment class for comparative analysis of Shapes
+
+    Note: each shape must be single connected component TODO: node code to guarantee yet
+    TODO: is there a standard file format to record shape alignments?
+    """
+    def __init__(self):
+        self._vertices_list = []
+        self.__n_vertices = None
+        self.__labels = []
+        self._label_to_sample_id = {}
+        self.faces = Faces()
+        # self.network = IdNetwork()
+
+    def __contains__(self, item):
+        if isinstance(item, str):
+            return item in self._label_to_sample_id
+        else:
+            return item in self._vertices_list  # TODO Shape.__eq__()
+
+    def __delitem__(self, item):
+        if isinstance(item, str):
+            del_id = self._label_to_sample_id[item]
+            del self.__labels[del_id]
+            del self._vertices_list[del_id]
+            for lb in self.__labels[del_id:]:
+                self._label_to_sample_id[lb] -= 1
+        elif isinstance(item, slice):
+            del self.__labels[item]
+            del self._vertices_list[item]
+            self._update_index()
+        elif isinstance(item, int):
+            del self.__labels[item]
+            del self._vertices_list[item]
+            for lb in self.__labels[item:]:
+                self._label_to_sample_id[lb] -= 1
+            self._update_index()
+        else:
+            raise TypeError(type(item))
+
+    def __getitem__(self, item):
+        if isinstance(item, str):
+            return item, self._vertices_list[self._label_to_sample_id[item]]
+        else:
+            if isinstance(item, slice):
+                return list(zip(self.__labels[item], self._vertices_list[item]))
+            else:
+                return self.__labels[item], self._vertices_list[item]
+
+    def __iter__(self):
+        for go_s, label in enumerate(self.__labels):
+            yield label, self._vertices_list[go_s]
+
+    def __len__(self):
+        return len(self._vertices_list)
+
+    def _update_index(self):
+        self._label_to_sample_id = {}
+        for go_s, label in enumerate(self.__labels):
+            self._label_to_sample_id[label] = go_s
+
+    def append(self, label: str, sample: Vertices):
+        # check duplicate label
+        assert label not in self._label_to_sample_id, "Label %s existed in the alignment!" % label
+        self._label_to_sample_id[label] = len(self.__labels)  #TODO fix the bug by removing -1
+        self.__labels.append(label)
+        # check vertices shape
+        if self.__n_vertices:
+            assert len(sample) == self.__n_vertices, "Unmatched Vertices dimension!"
+        else:
+            if self.faces:
+                assert len(sample) > np.amax(self.faces.vertex_ids), "Face ids out of range!"
+            self.__n_vertices = len(sample)
+        self._vertices_list.append(sample)
+
+    def get_labels(self):
+        return list(self.__labels)
+
+    def iter_labels(self):
+        for label in self.__labels:
+            yield label
+
+    def remove(self, labels):
+        del_names = set(labels)
+        go_to = 0
+        while go_to < len(self.__labels):
+            if self.__labels[go_to] in del_names:
+                del_names.remove(self.__labels[go_to])
+                del self._vertices_list[go_to]
+                del self.__labels[go_to]
+            else:
+                go_to += 1
+        self._update_index()
+        if del_names:
+            logger.warning("label(s) " + ",".join(sorted(del_names)) + " not found!\n")
+
+    def n_faces(self):
+        return len(self.faces.vertex_ids)
+
+    def n_vertices(self):
+        return self.__n_vertices
+
+    def n_samples(self):
+        return len(self._vertices_list)
+
+
+

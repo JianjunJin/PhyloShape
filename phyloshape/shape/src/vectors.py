@@ -11,12 +11,14 @@ import random
 import numpy as np
 from numpy.typing import ArrayLike
 from phyloshape.utils import trans_vector_to_relative, trans_vector_to_absolute
+from loguru import logger
+logger = logger.bind(name="phyloshape")
 
 
 class VectorHandler:
     """
     Used in VertexVectorMapper.
-    Unit class recording a single map between the vertices-face system and the absolute_vector system.
+    Unit class recording a single map between the vertices-face system and the vertices system.
 
     """
     def __init__(
@@ -127,16 +129,17 @@ class VertexTree:
 
 class VertexVectorMapper:
     """
-    Class recording all maps between the vertices-face system and the vector system
+    Main Class recording all maps between the vertices-face system and the vector system
+
     """
     def __init__(self,
-                 face_indices: ArrayLike = None,
+                 vertices_ids_in_faces: ArrayLike = None,
                  random_seed: int = 0):
         """
 
         Parameters
         ----------
-        face_indices:
+        vertices_ids_in_faces:
             All faces must be from a single connected object.
         random_seed: int
             0: pre-order-like traverse
@@ -153,7 +156,7 @@ class VertexVectorMapper:
         #TODO I don't know why the random mode will be significantly smaller.
         # Should find out where it is and optimize it.
         self.random_seed = random_seed
-        self.__update(face_indices)
+        self.__update(vertices_ids_in_faces)
 
     def __update(
             self,
@@ -174,7 +177,7 @@ class VertexVectorMapper:
         random.seed(self.random_seed)
         triplets_set = set([tuple(tl) for tl in triplets_list])
         len_triplets = len(triplets_set)
-        print(f"{len_triplets} triplets input.")
+        logger.info(f"{len_triplets} triplets input.")
 
         for tri_ids in triplets_list:
             for single_id in tri_ids:
@@ -184,7 +187,7 @@ class VertexVectorMapper:
                     #   the_reference_triplet = id_related_triplets & self.__checked_triplets
                     # so we have to use set here to store the id_related_triplets
                 self.__id_to_triplets[single_id].add(tuple(tri_ids))
-        print(f"{len(self.__id_to_triplets)} vertices indexed.")
+        logger.info(f"{len(self.__id_to_triplets)} vertices indexed.")
 
         # have the first point id fixed in space
         if self.random_seed not in {0, -1}:
@@ -249,7 +252,7 @@ class VertexVectorMapper:
             # previous_triplet = this_triplet
             # checking_sf_indices = list(pending_sf_indices)
             # pending_sf_indices = []
-        print(f"{len(self.__checked_triplets)} triplets checked.")
+        logger.info(f"{len(self.__checked_triplets)} triplets checked.")
 
     def __build_vector(self, from_id, to_id):
         candidate_triplets = self.__id_to_triplets[from_id] & self.__checked_triplets
@@ -283,30 +286,51 @@ class VertexVectorMapper:
         vectors
             ArrayLike
         """
-        # initialize with the first & second vectors
-        norm_v1 = np.linalg.norm(vertices[self.__vh_list[0].target_id] - vertices[self.__vh_list[0].from_id])
-        vectors = [np.array([norm_v1, 0, 0])]
+        # initialize with the first vectors
+        vh_first = self.__vh_list[0]
+        space_v1 = vertices[vh_first.to_id] - vertices[vh_first.from_id]
+        norm_v1 = np.linalg.norm(space_v1)
+        relative_v1 = np.array([norm_v1, 0, 0])
+        vectors = [relative_v1]
+
+        # initialize with the second vectors
+        # vh_next = self.__vh_list[1]
+        # space_v2 = vertices[vh_next.to_id] - vertices[vh_first.from_id]
+        # norm_v2 = np.linalg.norm(space_v2)
+        # dot_product_v12 = sum(space_v1 * space_v2)
+        # cos_theta2 = dot_product_v12 / (norm_v1 * norm_v2)
+        # sin_theta2 = (1 - cos_theta2 ** 2) ** 0.5
+        # vectors.append(np.array([cos_theta2 * norm_v2, sin_theta2 * norm_v2, 0]) - relative_v1)
+
         # do the following vectors
         for vh in self.__vh_list[1:]:
-            vector_in_space = vertices[vh.target_id] - vertices[vh.from_id]
+            # logger.trace("vector handler: {}".format(vh))
+            vector_in_space = vertices[vh.to_id] - vertices[vh.from_id]
+            # logger.trace("vector_in_space: %s" % str(vector_in_space))
+            # logger.trace("face points: {}".format(vertices[list(vh.from_face)]))
             relative_vector = trans_vector_to_relative(vector_in_space, vertices[list(vh.from_face)])
+            # logger.trace("relative vector: {}".format(relative_vector))
             vectors.append(relative_vector)
         return np.array(vectors)
 
     def to_vertices(self, vectors) -> ArrayLike:
         assert len(vectors) == len(self.__vh_list), \
-            "The length of the vectors must equals the length of absolute_vector handlers!"
+            "The length of the vectors ({}) must equals the length of vertices handlers ({})!".format(
+                len(vectors), len(self.__vh_list))
         vertices = np.array([np.array([None, None, None])] * (len(vectors) + 1), dtype=np.float32)
         vertices[self.__vh_list[0].from_id] = [0., 0., 0.]
-        vertices[self.__vh_list[0].target_id] = vectors[0]
-        vertices[self.__vh_list[1].target_id] = vectors[0] + vectors[1]
+        vertices[self.__vh_list[0].to_id] = vectors[0]
+        vertices[self.__vh_list[1].to_id] = vectors[0] + vectors[1]
         for go_vct, vh in enumerate(self.__vh_list[2:]):
-            relative_vector = vectors[go_vct]
+            relative_vector = vectors[go_vct + 2]
             vector_in_space = trans_vector_to_absolute(relative_vector, vertices[list(vh.from_face)])
             if np.isnan(vertices[vh.from_id]).any():
-                raise ValueError(f"While building Vtx {vh.target_id}, Vtx {vh.from_id} is invalid {vertices[vh.from_id]}!")
+                raise ValueError(
+                    f"While building Vtx {vh.to_id}, Vtx {vh.from_id} is invalid {vertices[vh.from_id]}!")
             else:
-                vertices[vh.target_id] = vertices[vh.from_id] + vector_in_space
+                vertices[vh.to_id] = vertices[vh.from_id] + vector_in_space
+            # logger.trace("goid:{}, vh:{}, vertices[vh.from_id]:{}, vertices[vh.to_id:{}]:{}".
+            #              format(go_vct, vh, vertices[vh.from_id], vh.to_id, vertices[vh.to_id]))
         return np.array(vertices)
 
     def vh_list(self):
@@ -314,3 +338,6 @@ class VertexVectorMapper:
 
     def get_lines_for_k3d_plot(self):
         return self.__vertex_tree.get_lines_for_k3d_plot()
+
+
+# TODO: Vectors for recording points?

@@ -19,7 +19,7 @@ setup(
     name="phyloshape",
     version=CUR_VERSION,
     url="https://github.com/Kinggerm/phyloshape",
-    author="JianJun Jin",
+    author="JianJun Jin; Yue Yang; Deren Eaton",
     author_email="jianjun.jin@columbia.edu",
     description="ancestral shape reconstruction toolkit",
     long_description=open('README.md').read(),
@@ -28,9 +28,10 @@ setup(
     install_requires=[
         "numpy",
         "scipy",
-        # "sympy",
+        "symengine",
         "loguru",
         "plyfile",
+        "toytree",  # temporarily
     ],
     entry_points={},
     license='GPLv3',

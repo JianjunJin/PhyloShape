@@ -3,6 +3,7 @@
 """Core PhyloShape class object of the phyloshape package.
 
 """
+import random
 
 from loguru import logger
 import numpy as np
@@ -11,6 +12,8 @@ from numpy.typing import ArrayLike
 from typing import Union, List, Dict
 from copy import deepcopy
 from collections import OrderedDict
+from loguru import logger
+logger = logger.bind(name="phyloshape")
 
 
 class IdNetwork:
@@ -44,8 +47,15 @@ class IdNetwork:
         # assert vertex_id in self.__id_set
         return self.adjacency[vertex_id]
 
-    def find_shortest_paths_from(self, vertex_id: int, cutoff: float = float("inf"), cache_res: bool = False) -> List:
-        """
+    def __bool__(self):
+        return bool(self.adjacency)
+
+    def find_shortest_paths_from(self,
+                                 vertex_id: int,
+                                 cutoff: float = float("inf"),
+                                 cache_res: bool = False) -> List:
+        """for a given distance cutoff, find all neighboring points along the 3D model using Dijkstra's algorithm
+
         :param vertex_id:
         :param cutoff:
         :param cache_res:
@@ -82,6 +92,26 @@ class IdNetwork:
                     if proposed_path.dist() <= cutoff:
                         active_paths.add(proposed_path)
         return found_to_return
+
+    def find_unions(self):
+        """
+
+        :return:
+        """
+        unions = []
+        candidate_vs = set(self.adjacency)
+        while candidate_vs:
+            new_root = candidate_vs.pop()
+            unions.append({new_root})
+            waiting_vs = set([next_v for next_v in self.adjacency[new_root] if next_v in candidate_vs])
+            while candidate_vs and waiting_vs:
+                next_v = waiting_vs.pop()
+                unions[-1].add(next_v)
+                candidate_vs.discard(next_v)
+                for next_v in self.adjacency[next_v]:
+                    if next_v in candidate_vs:
+                        waiting_vs.add(next_v)
+        return unions
 
 
 class _ActivePaths:
@@ -271,14 +301,22 @@ class _ActivePath:
 
 
 def test_net():
-    this_net = IdNetwork(pairs=[[1, 2],
-                                [1, 3],
-                                [2, 4],
-                                [3, 5],
-                                [3, 6],
-                                [4, 6],
-                                [5, 6]],
-                         edge_lens=[0.9, 0.1, 0.95, 0.2, 0.2, 0.2, 0.2])
+    # this_net = IdNetwork(pairs=[[1, 2],
+    #                             [1, 3],
+    #                             [2, 4],
+    #                             [3, 5],
+    #                             [3, 6],
+    #                             [4, 6],
+    #                             [5, 6],
+    #                             [7, 8],
+    #                             [7, 9],
+    #                             [9, 10],
+    #                             [11, 12]],
+    #                      edge_lens=[0.9, 0.1, 0.95, 0.2, 0.2, 0.2, 0.2, 0.5, 0.15, 0.4, 0.6])
+    v_size = 10000
+    n_edge = int(v_size * 1.2)
+    this_net = IdNetwork(pairs=np.random.choice(range(v_size), size=(n_edge, 2)),
+                         edge_lens=np.random.random(n_edge))
     res_paths = this_net.find_shortest_paths_from(1, cutoff=0.5)
     return res_paths
 

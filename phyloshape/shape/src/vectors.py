@@ -133,14 +133,14 @@ class VertexVectorMapper:
 
     """
     def __init__(self,
-                 vertices_ids_in_faces: ArrayLike = None,
+                 vertices_ids_in_faces=None,
                  random_seed: int = 0):
         """
 
         Parameters
         ----------
         vertices_ids_in_faces:
-            All faces must be from a single connected object.
+            ArrayLike or Shape or Face. All faces must be from a single connected object.
         random_seed: int
             0: pre-order-like traverse
             -1: post-order-like traverse
@@ -156,7 +156,14 @@ class VertexVectorMapper:
         #TODO I don't know why the random mode will be significantly smaller.
         # Should find out where it is and optimize it.
         self.random_seed = random_seed
-        self.__update(vertices_ids_in_faces)
+        #
+        if "faces" in dir(vertices_ids_in_faces) and "vertex_ids" in dir(vertices_ids_in_faces.faces):
+            vts = vertices_ids_in_faces.faces.vertex_ids
+        elif "vertex_ids" in dir(vertices_ids_in_faces):
+            vts = vertices_ids_in_faces.vertex_ids
+        else:
+            vts = vertices_ids_in_faces
+        self.__update(vts)
 
     def __update(
             self,

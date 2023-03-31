@@ -20,7 +20,7 @@ class Vertices:
                  colors: Union[ArrayLike, List, None] = None):
         self.coords = np.array([], dtype=COORD_TYPE) if coords is None else np.array(coords, dtype=COORD_TYPE)
         self.colors = np.array([], dtype=RGB_TYPE) if colors is None else np.array(colors, dtype=RGB_TYPE)
-        if self.colors:
+        if len(self.colors):
             assert len(self.coords) == len(self.colors)
 
     def __getitem__(self, item):

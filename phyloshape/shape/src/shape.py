@@ -169,7 +169,10 @@ class Shape:
             chosen_v_ids = sorted(set.union(*sorted_components[component_id]))
         new_shape = Shape()
         # only keep the chosen vertex ids
-        new_shape.vertices.coords, new_shape.vertices.colors = self.vertices[chosen_v_ids]
+        if self.vertices.colors:
+            new_shape.vertices.coords, new_shape.vertices.colors = self.vertices[chosen_v_ids]
+        else:
+            new_shape.vertices.coords = self.vertices[chosen_v_ids]
         # deepcopy the original faces object
         new_shape.faces = deepcopy(self.faces)
         # find the faces that contains any unwanted vertex ids, and assign the ids to rm_f_ids, then delete them

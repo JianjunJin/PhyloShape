@@ -78,8 +78,11 @@ class Shape:
         obj = PlyData.read(file_name)
         # read the coordinates
         vertex_coords = np.stack([obj["vertex"]["x"], obj["vertex"]["y"], obj["vertex"]["z"]], axis=1)
-        # read the vertex_colors as rgb
-        vertex_colors = np.stack([obj["vertex"]["red"], obj["vertex"]["green"], obj["vertex"]["blue"]], axis=1)
+        try:
+            # read the vertex_colors as rgb
+            vertex_colors = np.stack([obj["vertex"]["red"], obj["vertex"]["green"], obj["vertex"]["blue"]], axis=1)
+        except ValueError:
+            vertex_colors = None
         # self.vertex_colors = rgb_to_hex(self.vertex_colors)
         self.vertices = Vertices(coords=vertex_coords, colors=vertex_colors)  # self.faces.vertices =
         # read the face indices

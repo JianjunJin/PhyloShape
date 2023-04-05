@@ -169,7 +169,7 @@ class Shape:
             chosen_v_ids = sorted(set.union(*sorted_components[component_id]))
         new_shape = Shape()
         # only keep the chosen vertex ids
-        if self.vertices.colors is None:
+        if self.vertices.colors is None or not len(self.vertices.colors):
             new_shape.vertices.coords = self.vertices[chosen_v_ids]
         else:
             new_shape.vertices.coords, new_shape.vertices.colors = self.vertices[chosen_v_ids]

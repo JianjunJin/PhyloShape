@@ -33,18 +33,18 @@ class Vertices:
         return bool(self.coords)
 
     def __iter__(self):
-        # if self.coords and self.colors:
-        for coord, color in zip(self.coords and self.colors):
-            yield coord, color
-        # else:
-        #     for coord in self.coords:
-        #         yield coord
+        if bool(self.colors):
+            for coord, color in zip(self.coords, self.colors):
+                yield coord, color
+        else:
+            raise ValueError("No colors found! Please iter the coord directly!")
 
     def __len__(self):
         return len(self.coords)
 
     # def __repr__(self):
     #     return self.coords, self.colors
+
 
 
 

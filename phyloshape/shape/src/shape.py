@@ -169,10 +169,10 @@ class Shape:
             chosen_v_ids = sorted(set.union(*sorted_components[component_id]))
         new_shape = Shape()
         # only keep the chosen vertex ids
-        if self.vertices.colors:
-            new_shape.vertices.coords, new_shape.vertices.colors = self.vertices[chosen_v_ids]
-        else:
+        if self.vertices.colors is None:
             new_shape.vertices.coords = self.vertices[chosen_v_ids]
+        else:
+            new_shape.vertices.coords, new_shape.vertices.colors = self.vertices[chosen_v_ids]
         # deepcopy the original faces object
         new_shape.faces = deepcopy(self.faces)
         # find the faces that contains any unwanted vertex ids, and assign the ids to rm_f_ids, then delete them
@@ -185,7 +185,8 @@ class Shape:
         uniq, inv = np.unique(face_v_ids, return_inverse=True)
         new_shape.faces.vertex_ids = np.array([v_id_translator[o_i] for o_i in uniq])[inv].reshape(face_v_ids.shape)
         # also delete associated texture ids
-        new_shape.faces.texture_ids = np.delete(new_shape.faces.texture_ids, rm_f_ids, axis=0)
+        if len(new_shape.faces.texture_ids):
+            new_shape.faces.texture_ids = np.delete(new_shape.faces.texture_ids, rm_f_ids, axis=0)
         # TODO: check other new_shape.faces.texture_* attributes
         #  may or may not in need of updating after extraction
         return new_shape

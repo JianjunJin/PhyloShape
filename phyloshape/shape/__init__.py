@@ -15,5 +15,5 @@ Parse shape data to a Shape instance:
 from phyloshape.shape.src.shape import Shape, ShapeAlignment
 from phyloshape.shape.src.face import Faces
 from phyloshape.shape.src.vertex import Vertices
-from phyloshape.shape.src.vectors import VertexVectorMapper
+from phyloshape.shape.src.vectors import FaceVectorMapper, VertexVectorMapper
 from phyloshape.shape.src.network import IdNetwork

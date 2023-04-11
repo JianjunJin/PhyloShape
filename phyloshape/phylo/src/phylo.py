@@ -5,7 +5,7 @@
 """
 import numpy as np
 from scipy.optimize import minimize, basinhopping
-from phyloshape.shape.src.vectors import VertexVectorMapper
+from phyloshape.shape.src.vectors import FaceVectorMapper, VertexVectorMapper
 from phyloshape.shape.src.shape import ShapeAlignment
 from phyloshape.shape.src.vertex import Vertices
 from phyloshape.phylo.src.models import *
@@ -50,8 +50,9 @@ class PhyloShape:
         self.__map_shape_to_tip()
         # TODO: more models to think about
         self.model = model if model else Brownian()
+        assert isinstance(self.model, MotionModel)
         self.__variables = []
-        # self.vv_translator is a VertexVectorMapper, making conversion between vertices and vectors
+        # self.vv_translator is a FaceVectorMapper, making conversion between vertices and vectors
         self.vv_translator = None
         self.loglike_form = 0
         self.negloglike_func = None  # for point estimation
@@ -67,8 +68,15 @@ class PhyloShape:
             # logger.trace(label + str(leaf_node.vertices.coords))
 
     def build_vv_translator(self):
-        # TODO: VertexVectorMapper.__init__(): auto detect face and face_v_ids
-        self.vv_translator = VertexVectorMapper(self.shapes.faces.vertex_ids)
+        if self.faces is None or len(self.faces) == 0:
+            # build the translator using vertices only
+            # TODO use alignment information rather than using the vertices of the first sample
+            label, vertices = self.shapes[0]
+            self.vv_translator = VertexVectorMapper(vertices)
+            logger.info(f"using {label} to construct the vector system ..")
+        else:
+            # TODO: FaceVectorMapper.__init__(): auto detect face and face_v_ids
+            self.vv_translator = FaceVectorMapper(self.faces.vertex_ids)
         len_vt = len(self.vv_translator.vh_list())
         logger.info("Vertex:Vector ({}:{}) translator built.".format(len_vt + 1, len_vt))
 
@@ -143,7 +151,7 @@ class PhyloShape:
             self.tree[anc_node_id].vectors = np.array(self.__result.x[go_p: to_p]).reshape(-1, 3)
             go_p = to_p
 
-    def minimize_negloglike(self):
+    def minimize_negloglike(self, num_proc=1):
         # constraints = # use constraints to avoid self-collision
         # verbose = False
         # other_optimization_options = {"disp": verbose, "maxiter": 5000, "ftol": 1.0e-6, "eps": 1.0e-10}
@@ -167,11 +175,18 @@ class PhyloShape:
             #     jac=False,
             #     options=other_optimization_options)
             minimizer_kwargs = {"method": "L-BFGS-B", "options": {"maxiter": 1000}, "tol": 1e-4}
+            # if num_proc == 1:
             result = basinhopping(self.negloglike_func_s,
                                   x0=initials,
                                   minimizer_kwargs=minimizer_kwargs,
                                   niter=10,
                                   seed=12345678)
+
+            # multiprocessing not working yet
+            # else:
+            #     from optimparallel import minimize_parallel
+            #     result = minimize_parallel(self.negloglike_func_s,
+            #                                x0=initials, parallel={"max_workers": num_proc})
             if result.success:
                 success_runs.append(result)
                 break
@@ -193,7 +208,7 @@ class PhyloShape:
         for anc_node_id in range(self.tree.ntips, self.tree.nnodes):
             self.tree[anc_node_id].vertices = Vertices(self.vv_translator.to_vertices(self.tree[anc_node_id].vectors))
 
-    def reconstruct_ancestral_shapes_using_ml(self):
+    def reconstruct_ancestral_shapes_using_ml(self, num_proc: int = 1):
         """
         maximum likelihood approach
         :return:
@@ -203,7 +218,7 @@ class PhyloShape:
         self.sym_ancestral_vectors()
         self.formularize_log_like(log_func=s_log)
         self.functionalize_log_like()
-        self.minimize_negloglike()
+        self.minimize_negloglike(num_proc=1)  # multiprocessing not working yet
         self.build_ancestral_vertices()
 
 

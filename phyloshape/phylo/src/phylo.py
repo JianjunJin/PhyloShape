@@ -39,7 +39,9 @@ class PhyloShape:
     def __init__(self,
                  tree_obj,
                  shape_alignments: ShapeAlignment,
-                 model=None):
+                 model=None,
+                 vect_transform=None,
+                 vect_inverse_transform=None):
         """
         :param tree_obj: TODO can be str/path/url
         :param shape_alignments: shape labels must match tree labels
@@ -51,6 +53,11 @@ class PhyloShape:
         # TODO: more models to think about
         self.model = model if model else Brownian()
         assert isinstance(self.model, MotionModel)
+        assert (vect_transform is None) == (vect_inverse_transform is None), \
+            "vect_transform and vect_inverse_transform must be used together!"
+        self.vect_transform = vect_transform
+        self.vect_inverse_transform = vect_inverse_transform
+
         self.__variables = []
         # self.vv_translator is a FaceVectorMapper, making conversion between vertices and vectors
         self.vv_translator = None
@@ -81,9 +88,17 @@ class PhyloShape:
         logger.info("Vertex:Vector ({}:{}) translator built.".format(len_vt + 1, len_vt))
 
     def build_tip_vectors(self):
-        for node_id in range(self.tree.ntips):
-            leaf_node = self.tree[node_id]
-            leaf_node.vectors = self.vv_translator.to_vectors(leaf_node.vertices)
+        if self.vect_transform is None:
+            for node_id in range(self.tree.ntips):
+                leaf_node = self.tree[node_id]
+                leaf_node.vectors = self.vv_translator.to_vectors(leaf_node.vertices)
+        else:
+            vectors_list = []
+            for node_id in range(self.tree.ntips):
+                vectors_list.append(self.vv_translator.to_vectors(self.tree[node_id].vertices))
+            # transform the original vectors to modified (e.g. PCA) ones
+            for node_id, trans_vectors in enumerate(self.vect_transform(vectors_list)):
+                self.tree[node_id].vectors = trans_vectors
         logger.info("Vectors for {} tips built.".format(self.tree.ntips))
 
     def sym_ancestral_vectors(self):
@@ -205,8 +220,15 @@ class PhyloShape:
             raise Exception("optimization failed!")  # TODO: find the error object from scipy
 
     def build_ancestral_vertices(self):
-        for anc_node_id in range(self.tree.ntips, self.tree.nnodes):
-            self.tree[anc_node_id].vertices = Vertices(self.vv_translator.to_vertices(self.tree[anc_node_id].vectors))
+        if self.vect_inverse_transform is None:
+            for anc_node_id in range(self.tree.ntips, self.tree.nnodes):
+                self.tree[anc_node_id].vertices = \
+                    Vertices(self.vv_translator.to_vertices(self.tree[anc_node_id].vectors))
+        else:
+            for anc_node_id in range(self.tree.ntips, self.tree.nnodes):
+                real_vectors = self.vect_inverse_transform(self.tree[anc_node_id].vectors)
+                self.tree[anc_node_id].vertices = \
+                    Vertices(self.vv_translator.to_vertices(real_vectors))
 
     def reconstruct_ancestral_shapes_using_ml(self, num_proc: int = 1):
         """

@@ -105,12 +105,12 @@ class PhyloShape:
     def sym_ancestral_vectors(self):
         # n_vectors = self.shapes.n_vertices() - 1
         vectors_shape = self.tree[0].vectors.shape
-        n_vectors = np.prod(vectors_shape)
+        n_vals = np.prod(vectors_shape)
         for node_id in range(self.tree.ntips, self.tree.nnodes):
             ancestral_node = self.tree[node_id]
             ancestral_node.vectors = \
                 ancestral_node.vectors_symbols = \
-                np.array([Symbol("%s_%s" % (node_id, go_v)) for go_v in range(n_vectors)]).reshape(vectors_shape)
+                np.array([Symbol("%s_%s" % (node_id, go_v)) for go_v in range(n_vals)]).reshape(vectors_shape)
                 # np.array([[Symbol("%s_%s_%s" % (_dim, node_id, go_v))
                 #            for _dim in ("x", "y", "z")]
                 #           for go_v in range(n_vectors)])
@@ -164,10 +164,12 @@ class PhyloShape:
         model_params = self.__result.x[:go_p]
         logger.info(", ".join(["%s=%f" % (_s, _v) for _s, _v in zip(model_params_signs, model_params)]))
         # 2. assign second part of the result.x to ancestral shape vectors
-        n_vts = self.shapes.n_vertices() - 1
+        # n_vts = self.shapes.n_vertices() - 1
+        vectors_shape = self.tree[0].vectors.shape
+        n_vals = np.prod(vectors_shape)
         for anc_node_id in range(self.tree.ntips, self.tree.nnodes):
-            to_p = go_p + 3 * n_vts
-            self.tree[anc_node_id].vectors = np.array(self.__result.x[go_p: to_p]).reshape(-1, 3)
+            to_p = go_p + n_vals
+            self.tree[anc_node_id].vectors = np.array(self.__result.x[go_p: to_p]).reshape(vectors_shape)
             go_p = to_p
 
     def minimize_negloglike(self, num_proc=1):

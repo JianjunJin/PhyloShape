@@ -99,17 +99,21 @@ class PhyloShape:
             # transform the original vectors to modified (e.g. PCA) ones
             for node_id, trans_vectors in enumerate(self.vect_transform(vectors_list)):
                 self.tree[node_id].vectors = trans_vectors
+            logger.info("Dimension {} -> {}".format(vectors_list[0].shape, self.tree[0].vectors.shape))
         logger.info("Vectors for {} tips built.".format(self.tree.ntips))
 
     def sym_ancestral_vectors(self):
-        n_vectors = self.shapes.n_vertices() - 1
+        # n_vectors = self.shapes.n_vertices() - 1
+        vectors_shape = self.tree[0].vectors.shape
+        n_vectors = np.prod(vectors_shape)
         for node_id in range(self.tree.ntips, self.tree.nnodes):
             ancestral_node = self.tree[node_id]
             ancestral_node.vectors = \
                 ancestral_node.vectors_symbols = \
-                np.array([[Symbol("%s_%s_%s" % (_dim, node_id, go_v))
-                           for _dim in ("x", "y", "z")]
-                          for go_v in range(n_vectors)])
+                np.array([Symbol("%s_%s" % (node_id, go_v)) for go_v in range(n_vectors)]).reshape(vectors_shape)
+                # np.array([[Symbol("%s_%s_%s" % (_dim, node_id, go_v))
+                #            for _dim in ("x", "y", "z")]
+                #           for go_v in range(n_vectors)])
         logger.info("Vectors for {} ancestral nodes symbolized.".format(self.tree.nnodes - self.tree.ntips))
 
     def formularize_log_like(self, log_func):

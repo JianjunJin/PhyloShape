@@ -74,13 +74,21 @@ class PhyloShape:
             label, leaf_node.vertices = self.shapes[leaf_node.name]
             # logger.trace(label + str(leaf_node.vertices.coords))
 
-    def build_vv_translator(self):
+    def build_vv_translator(self, mode="network-local", num_vs=20):
+        self.vv_translator = None
         if self.faces is None or len(self.faces) == 0:
             # build the translator using vertices only
             # TODO use alignment information rather than using the vertices of the first sample
-            label, vertices = self.shapes[0]
-            self.vv_translator = VertexVectorMapper(vertices)
-            logger.info(f"using {label} to construct the vector system ..")
+            if mode == "old":
+                label, vertices = self.shapes[0]
+                from phyloshape.shape.src.vectors import VertexVectorMapperOld
+                self.vv_translator = VertexVectorMapperOld(vertices)
+                logger.info(f"using {label} to construct the vector system ..")
+            else:
+                self.vv_translator = VertexVectorMapper(
+                    [vt.coords for lb, vt in self.shapes],
+                    mode=mode,
+                    num_vs=num_vs)
         else:
             # TODO: FaceVectorMapper.__init__(): auto detect face and face_v_ids
             self.vv_translator = FaceVectorMapper(self.faces.vertex_ids)
@@ -236,12 +244,12 @@ class PhyloShape:
                 self.tree[anc_node_id].vertices = \
                     Vertices(self.vv_translator.to_vertices(real_vectors))
 
-    def reconstruct_ancestral_shapes_using_ml(self, num_proc: int = 1):
+    def reconstruct_ancestral_shapes_using_ml(self, mode="network-local", num_vs: int = 20, num_proc: int = 1):
         """
         maximum likelihood approach
         :return:
         """
-        self.build_vv_translator()
+        self.build_vv_translator(mode, num_vs=num_vs)
         self.build_tip_vectors()
         self.sym_ancestral_vectors()
         self.formularize_log_like(log_func=s_log)
@@ -249,6 +257,12 @@ class PhyloShape:
         self.minimize_negloglike(num_proc=1)  # multiprocessing not working yet
         self.build_ancestral_vertices()
 
+    def reconstruct_ancestral_shapes_using_gpa(self):
+        """
+        :return:
+        """
+        # TODO
+        pass
 
 
 

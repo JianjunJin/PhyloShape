@@ -11,7 +11,13 @@ import random
 import numpy as np
 from numpy.typing import ArrayLike
 from phyloshape.utils import trans_vector_to_relative, trans_vector_to_absolute
+from phyloshape.utils.src.vertices_manipulator import find_duplicates_in_vertices_list
+# from phyloshape.utils.src.stats import mean_without_outliers
+from phyloshape.shape.src.shape import ShapeAlignment
 from loguru import logger
+from scipy.spatial import KDTree
+from scipy.spatial.distance import cdist
+from scipy.stats import norm
 logger = logger.bind(name="phyloshape")
 
 
@@ -40,13 +46,26 @@ class _VectorHandler:
     def __repr__(self):
         if self.ref_plane:
             face_with_id_marked = list(self.ref_plane)
-            face_with_id_marked[self.ref_plane.index(self.from_id)] = [self.from_id]
+            try:
+                face_with_id_marked[self.ref_plane.index(self.from_id)] = [self.from_id]
+            except ValueError:
+                # mark from_id out of the ref_plane scope
+                face_with_id_marked.append([self.from_id])
         else:
             face_with_id_marked = [[self.from_id]]
         return f"{face_with_id_marked} -> {self.to_id}"
 
     def __str__(self):
         return self.__repr__()
+#
+#
+# class _VectorHandlerList:
+#     """
+#     list of _VectorHandler
+#     """
+#     def __init__(self, *vh: _VectorHandler):
+#         self.__list = list(vh)
+#
 
 
 class _VertexTree:
@@ -75,6 +94,7 @@ class _VertexTree:
         self.__vertex_parent[to_id] = from_id
 
     def get_lines_for_k3d_plot(self, start_id: int = None):
+        # TODO: usable but bugs to be fixed, last extra idx
         """
         For k3d line plotting.
 
@@ -148,15 +168,117 @@ class _VertexTree:
         return tuple(id_list)
 
 
-class VMapper:
+class _VertexFlow:
     """
-    Base Class recording all maps between the coordination system and the vector system
+    Used in FaceVectorMapper/VertexVectorMapper for tracing and k3d plotting.
+    Network-like class recording the vertices connection map via the vectors.
+
+    """
+
+    def __init__(self, root_id: int = None):
+        self.__vertex_children = {}
+        self.__vertex_parent = {}
+        self.__root = None
+        if not (root_id is None):
+            self.set_root(root_id)
+        # self.vertex_id = vertex_id
+
+    def set_root(self, vertex_id: int):
+        self.__root = vertex_id
+        self.__vertex_children = {vertex_id: []}
+        self.__vertex_parent = {vertex_id: None}
+
+    def add_link(self, from_id, to_id):
+        if from_id not in self.__vertex_children:
+            self.__vertex_children[from_id] = []
+        self.__vertex_children[from_id].append(to_id)
+        if to_id not in self.__vertex_parent:
+            self.__vertex_parent[to_id] = []
+        self.__vertex_parent[to_id].append(from_id)
+
+    def get_lines_for_k3d_plot(self, start_id: int = None):
+        """
+        For k3d line plotting.
+
+        Parameters
+        ----------
+        start_id: int
+            start from the root if None by default
+        """
+        # TODO: to be updated for network
+        raise NotImplementedError("to be done")
+
+        if start_id is None:
+            start_id = self.__root
+
+        path = [start_id]
+        if start_id in self.__vertex_children:
+            next_id = self.__vertex_children[start_id][0]
+            path.append(next_id)
+        else:
+            raise TypeError("At least two points are required for a line!")
+        # branching_node_visited and this_branch_path should be co-changed
+        branching_node_visited = [[start_id, 0]]
+        this_branch_path = [[start_id]]
+        while branching_node_visited:
+            go_id = path[-1]
+            if go_id in self.__vertex_children:
+                # elongation
+                next_id = self.__vertex_children[go_id][0]
+                path.append(next_id)
+                # make a branch
+                if len(self.__vertex_children[go_id]) > 1:
+                    branching_node_visited.append([go_id, 0])
+                    this_branch_path.append([next_id])
+                else:
+                    this_branch_path[-1].append(next_id)
+            else:
+                last_node_id, last_br = branching_node_visited[-1]
+                # traverse back to the latest branching point
+                traverse_back_path = this_branch_path[-1][-2::-1] + [last_node_id]
+                path.extend(traverse_back_path)
+                # both branches traversed
+                while last_br == len(self.__vertex_children[last_node_id]) - 1:
+                    # traverse back deeper
+                    del branching_node_visited[-1]
+                    del this_branch_path[-1]
+                    if branching_node_visited:
+                        last_node_id, last_br = branching_node_visited[-1]
+                        traverse_back_path = this_branch_path[-1][-2::-1] + [last_node_id]
+                        path.extend(traverse_back_path)
+                    else:
+                        break
+                # criterion still stands
+                if branching_node_visited:
+                    # switch to next branch
+                    next_id = self.__vertex_children[last_node_id][last_br + 1]
+                    path.append(next_id)
+                    branching_node_visited[-1][1] = last_br + 1
+                    this_branch_path[-1] = [next_id]
+        return path
+
+    def trace(self, from_id, n_steps: int = 1):
+        raise NotImplementedError("to be done")
+        id_list = [from_id]
+        for foo in range(n_steps):
+            parent = self.__vertex_parent[id_list[-1]]
+            if parent is None:
+                return tuple(id_list)
+            else:
+                id_list.append(parent)
+        return tuple(id_list)
+
+
+class VMapperOld:
+    """
+    Base Class recording all maps between the coordination system and the vector system.
+    The representation swifts are reversible with S(Vectors) = S(vertices) - 1
     """
 
     def __init__(self, random_seed: int = 0):
         self._vh_list = []
-        self._id_to_triplets = {}
-        self._vertex_tree = _VertexTree()  # for plotting
+        self._id_to_triplets = {}  # record the triplets ("face"/"pseudo-face") where the id is
+        self._vertex_tree = _VertexTree()  # for plotting and tracing
         self.random_seed = random_seed
 
     def _append(self, vh: _VectorHandler):
@@ -175,6 +297,10 @@ class VMapper:
         vectors
             ArrayLike
         """
+        assert len(vertices) == len(self._vh_list) + 1, \
+            "The length of the vertices ({}) must be 1-unit larger than the length of vector handlers ({})!".format(
+                len(vertices), len(self._vh_list))
+
         # initialize with the first vectors
         vh_first = self._vh_list[0]
         space_v1 = vertices[vh_first.to_id] - vertices[vh_first.from_id]
@@ -204,9 +330,9 @@ class VMapper:
 
     def to_vertices(self, vectors) -> ArrayLike:
         assert len(vectors) == len(self._vh_list), \
-            "The length of the vectors ({}) must equals the length of vertices handlers ({})!".format(
+            "The length of the vectors ({}) must equals the length of vector handlers ({})!".format(
                 len(vectors), len(self._vh_list))
-        vertices = np.array([np.array([None, None, None])] * (len(vectors) + 1), dtype=np.float32)
+        vertices = np.full((len(vectors) + 1, 3), np.nan, dtype=np.float64)
         vertices[self._vh_list[0].from_id] = [0., 0., 0.]
         vertices[self._vh_list[0].to_id] = vectors[0]
         vertices[self._vh_list[1].to_id] = vectors[0] + vectors[1]
@@ -220,7 +346,7 @@ class VMapper:
                 vertices[vh.to_id] = vertices[vh.from_id] + vector_in_space
             # logger.trace("goid:{}, vh:{}, vertices[vh.from_id]:{}, vertices[vh.to_id:{}]:{}".
             #              format(go_vct, vh, vertices[vh.from_id], vh.to_id, vertices[vh.to_id]))
-        return np.array(vertices)
+        return np.array(vertices, dtype=np.float64)
 
     def vh_list(self):
         return deepcopy(self._vh_list)
@@ -229,7 +355,188 @@ class VMapper:
         return self._vertex_tree.get_lines_for_k3d_plot()
 
 
-class FaceVectorMapper(VMapper):
+class VMapper:
+    """
+    Base Class recording all maps between the coordination system and the vector system.
+    The representation swifts can be irreversible with S(Vectors) = S(vertices) * N - N*(N+1)/2, when S(vertices) > N
+    """
+
+    def __init__(self, random_seed: int = 0):
+        self._vh_bundle_list = []
+        self._shape = []
+        self._id_to_triplets = {}  # record the triplets ("face"/"pseudo-face") where the id is
+        # self._vertex_tree = _VertexFlow()  # for plotting and tracing
+        self._vertex_tree = _VertexTree()  # for plotting and tracing
+        self.random_seed = random_seed
+        self._debug_vertices = []
+
+    def _append(self, vh_bundle: List[Union[_VectorHandler]]):
+        # TODO: create _VectorHandlerList to record the weights, the shared to_id, size, and other attributes
+        #       the weights can be equal (?), or average-v-length (?),
+        #       or predictability given from_id (inverse of variation or angle-variation among samples)
+        #       try "inverse of variation among samples" first, i.e highest probability point shared by distributions
+        self._vh_bundle_list.append(vh_bundle)
+        self._shape.append(len(vh_bundle))
+
+    def to_vectors(self, vertices: ArrayLike) -> ArrayLike:
+        """
+        Based on the vh_bundle_list information, it takes vertices of a shape to generate representative vectors.
+
+
+        Parameters
+        ----------
+        vertices:
+            Array of triangle vertices: float (x, y, z) coordinate triplets.
+
+        Returns
+        -------
+        vectors
+            ArrayLike
+        """
+        assert len(vertices) == len(self._shape) + 1, \
+            "The length of the vertices ({}) must be 1-unit larger than the length of vh bundles ({})!".format(
+                len(vertices), len(self._shape))
+
+        # initialize with the first vectors
+        vh_first_bundle = self._vh_bundle_list[0]
+        # relative_v1 = []
+        vectors = []
+        for vh_first in vh_first_bundle:  # size of 1
+            # if vh_first is None:
+            #     relative_v1.append(np.array([None, None, None]))
+            # else:
+            space_v1 = vertices[vh_first.to_id] - vertices[vh_first.from_id]
+            norm_v1 = np.linalg.norm(space_v1)
+            # relative_v1.append(np.array([norm_v1, 0, 0]))
+            vectors.append(np.array([norm_v1, 0, 0]))
+        # vectors = [relative_v1]
+
+        # initialize with the second vectors
+        # vh_next = self._vh_bundle_list[1]
+        # space_v2 = vertices[vh_next.to_id] - vertices[vh_first.from_id]
+        # norm_v2 = np.linalg.norm(space_v2)
+        # dot_product_v12 = sum(space_v1 * space_v2)
+        # cos_theta2 = dot_product_v12 / (norm_v1 * norm_v2)
+        # sin_theta2 = (1 - cos_theta2 ** 2) ** 0.5
+        # vectors.append(np.array([cos_theta2 * norm_v2, sin_theta2 * norm_v2, 0]) - relative_v1)
+
+        # do the following vectors
+        for vh_bundle_list in self._vh_bundle_list[1:]:
+            # relative_vectors = []
+            for vh in vh_bundle_list:
+                # if vh is None:
+                #     relative_vectors.append(np.array([None, None, None]))
+                # else:
+                # logger.trace("vector handler: {}".format(vh))
+                vector_in_space = vertices[vh.to_id] - vertices[vh.from_id]
+                # logger.trace("vector_in_space: %s" % str(vector_in_space))
+                # logger.trace("face points: {}".format(vertices[list(vh.ref_plane_triplet)]))
+                # if np.linalg.norm(vector_in_space) < 0.00005:
+                #     print("problematic ref plant: {}".format(vh.ref_plane))
+                # relative_vectors.append(trans_vector_to_relative(vector_in_space, vertices[list(vh.ref_plane)]))
+                vectors.append(trans_vector_to_relative(vector_in_space, vertices[list(vh.ref_plane)]))
+                # logger.trace("relative vector: {}".format(relative_vector))
+            # vectors.append(relative_vectors)
+        return np.array(vectors, dtype=np.float64)
+
+    def to_vertices(self, vectors) -> ArrayLike:
+        assert len(vectors) == sum(self._shape), \
+            "The length of the vectors ({}) must equal the length of vector handlers ({})!".format(
+                len(vectors), sum(self._shape))
+        vertices = np.full((len(self._shape) + 1, 3), np.nan, dtype=np.float64)
+
+        # first vh bundle only has one valid handler
+        go_v = 0
+        first_vh_bundle = self._vh_bundle_list[0]
+        first_vectors = vectors[go_v]
+        vertices[first_vh_bundle[0].from_id] = [0., 0., 0.]
+        vertices[first_vh_bundle[0].to_id] = first_vectors[0]  # only has one vector too
+        go_v += self._shape[0]
+
+        # second vh bundle has two valid handlers
+        # TODO, weights can be calculated from vector variations
+        second_vh_bundle = self._vh_bundle_list[1]
+        vertices[second_vh_bundle[0].to_id] = np.median([vertices[vh.from_id] + vectors[go_v + go_h]
+                                                         for go_h, vh in enumerate(second_vh_bundle)
+                                                         if vh is not None], axis=0)
+
+        # using mean without outliers does not work!
+        # here_vertices = [vertices[vh.from_id] + vectors[go_v + go_h] for go_h, vh in enumerate(second_vh_bundle)]
+        # here_vertices = np.array(here_vertices, dtype=np.float64)
+        # vertices[second_vh_bundle[0].to_id] = [mean_without_outliers(here_vertices[:, i]) for i in range(3)]
+        go_v += self._shape[1]
+
+        # logger.info([vertices[vh.from_id] + vectors[1][go_h]
+        #              for go_h, vh in enumerate(second_vh_bundle)
+        #              if vh is not None])
+
+        # following vh bundle requires converting relative vectors to absolute vectors
+        self._debug_vertices = []
+        for go_b, vh_bundle in enumerate(self._vh_bundle_list[2:]):
+            v_len = self._shape[2 + go_b]
+            relative_vectors = vectors[go_v: go_v + v_len]
+            go_v += v_len
+            new_triplets = []
+            for go_h, vh in enumerate(vh_bundle):
+                if vh is not None:
+                    # if np.linalg.norm(relative_vectors[go_h]) < 0.00005:
+                    #     print("problematic ref plant: {}".format(vh.ref_plane))
+                    vector_in_space = trans_vector_to_absolute(relative_vectors[go_h], vertices[list(vh.ref_plane)])
+                    if np.isnan(vertices[vh.from_id]).any():
+                        raise ValueError(
+                            f"While building Vtx {vh.to_id}, Vtx {vh.from_id} is invalid {vertices[vh.from_id]}!")
+                    new_triplets.append(vertices[vh.from_id] + vector_in_space)
+                else:
+                    break
+            vertices[vh_bundle[0].to_id] = np.median(new_triplets, axis=0)
+
+            # using mean without outliers does not work!
+            # new_triplets = np.array(new_triplets, dtype=np.float64)
+            # vertices[vh_bundle[0].to_id] = [mean_without_outliers(new_triplets[:, i]) for i in range(3)]
+
+            self._debug_vertices.append(new_triplets)
+            # vertices[vh_bundle[0].to_id] = new_triplets[0]
+
+            # TODO, this process is generally very vulnerable, use np.average and turn on below code to see
+            # print(vh_bundle[0])
+            # print(vh_bundle[0].to_id, new_triplets[0])
+            # print("   ", new_triplets[-1])
+
+            # # TODO, if the plane is collapsed because of duplicates ...
+            # vectors_in_space = [trans_vector_to_absolute(relative_vectors[go_h], vertices[list(vh.ref_plane)])
+            #                     for go_h, vh in enumerate(vh_bundle) if vh is not None]
+            # # TODO, weights can be calculated from vector variations
+            # # vertices[vh_bundle[0].to_id] = np.average([vertices[vh.from_id] + vectors_in_space[go_h]
+            # #                                            for go_h, vh in enumerate(vh_bundle) if vh is not None], axis=0)
+            # vertices[vh_bundle[0].to_id] = [vertices[vh.from_id] + vectors_in_space[go_h]
+            #                                 for go_h, vh in enumerate(vh_bundle) if vh is not None][-1]
+            # if go_b < 2:
+            #     logger.info("relative_vectors: {}".format(relative_vectors))
+            #     logger.info("vectors_in_space: {}".format(vectors_in_space))
+            #     logger.info("relative_vectors2: {}".format(
+            #         [trans_vector_to_relative(vectors_in_space[go_h], vertices[list(vh.ref_plane)])
+            #          for go_h, vh in enumerate(vh_bundle) if vh is not None]))
+            #     logger.info("vh_bundle: {}".format(vh_bundle))
+            #     logger.info([vertices[vh.from_id] + vectors_in_space[go_h]
+            #                  for go_h, vh in enumerate(vh_bundle) if vh is not None])
+
+            # if np.isnan(vertices[vh.from_id]).any():
+            #     raise ValueError(
+            #         f"While building Vtx {vh.to_id}, Vtx {vh.from_id} is invalid {vertices[vh.from_id]}!")
+            # else:
+            #     vertices[vh.to_id] = vertices[vh.from_id] + vector_in_space
+            # logger.trace("goid:{}, vh:{}, vertices[vh.from_id]:{}, vertices[vh.to_id:{}]:{}".
+            #              format(go_vct, vh, vertices[vh.from_id], vh.to_id, vertices[vh.to_id]))
+        return vertices
+
+    def vh_list(self):
+        return deepcopy(self._vh_bundle_list)
+
+    def get_lines_for_k3d_plot(self):
+        return self._vertex_tree.get_lines_for_k3d_plot()
+
+
+class FaceVectorMapperOld(VMapperOld):
     """
     Main Class recording all maps between the face-vertices system and the vector system
 
@@ -248,14 +555,10 @@ class FaceVectorMapper(VMapper):
             other values: random
         """
         super().__init__(random_seed)
-        # self._vh_list = []
         self.__fixed_vertex_ids = set()
         self.__waiting_triplets = OrderedDict()  # to remove random effect outside the random.choice
         self.__checking_triplet = None
         self.__checked_triplets = set()
-        # self._id_to_triplets = {}
-        # self._vertex_tree = _VertexTree()  # for plotting
-        # self.random_seed = random_seed
         # if is Shape
         if "faces" in dir(input_obj) and "vertex_ids" in dir(input_obj.faces):
             vts = input_obj.faces.vertex_ids
@@ -374,79 +677,8 @@ class FaceVectorMapper(VMapper):
             if triplets not in self.__checked_triplets and triplets != self.__checking_triplet:
                 self.__waiting_triplets[triplets] = None
 
-    # def _append(self, vh: _VectorHandler):
-    #     self._vh_list.append(vh)
-    #
-    # def to_vectors(self, vertices) -> ArrayLike:
-    #     """Based on the mapping information, it takes vertices of a shape to generate representative vectors
-    #
-    #     Parameters
-    #     ----------
-    #     vertices:
-    #         Array of triangle vertices: float (x, y, z) coordinate triplets.
-    #
-    #     Returns
-    #     -------
-    #     vectors
-    #         ArrayLike
-    #     """
-    #     # initialize with the first vectors
-    #     vh_first = self._vh_list[0]
-    #     space_v1 = vertices[vh_first.to_id] - vertices[vh_first.from_id]
-    #     norm_v1 = np.linalg.norm(space_v1)
-    #     relative_v1 = np.array([norm_v1, 0, 0])
-    #     vectors = [relative_v1]
-    #
-    #     # initialize with the second vectors
-    #     # vh_next = self._vh_list[1]
-    #     # space_v2 = vertices[vh_next.to_id] - vertices[vh_first.from_id]
-    #     # norm_v2 = np.linalg.norm(space_v2)
-    #     # dot_product_v12 = sum(space_v1 * space_v2)
-    #     # cos_theta2 = dot_product_v12 / (norm_v1 * norm_v2)
-    #     # sin_theta2 = (1 - cos_theta2 ** 2) ** 0.5
-    #     # vectors.append(np.array([cos_theta2 * norm_v2, sin_theta2 * norm_v2, 0]) - relative_v1)
-    #
-    #     # do the following vectors
-    #     for vh in self._vh_list[1:]:
-    #         # logger.trace("vector handler: {}".format(vh))
-    #         vector_in_space = vertices[vh.to_id] - vertices[vh.from_id]
-    #         # logger.trace("vector_in_space: %s" % str(vector_in_space))
-    #         # logger.trace("face points: {}".format(vertices[list(vh.ref_plane_triplet)]))
-    #         relative_vector = trans_vector_to_relative(vector_in_space, vertices[list(vh.ref_plane)])
-    #         # logger.trace("relative vector: {}".format(relative_vector))
-    #         vectors.append(relative_vector)
-    #     return np.array(vectors)
-    #
-    # def to_vertices(self, vectors) -> ArrayLike:
-    #     assert len(vectors) == len(self._vh_list), \
-    #         "The length of the vectors ({}) must equals the length of vertices handlers ({})!".format(
-    #             len(vectors), len(self._vh_list))
-    #     vertices = np.array([np.array([None, None, None])] * (len(vectors) + 1), dtype=np.float32)
-    #     vertices[self._vh_list[0].from_id] = [0., 0., 0.]
-    #     vertices[self._vh_list[0].to_id] = vectors[0]
-    #     vertices[self._vh_list[1].to_id] = vectors[0] + vectors[1]
-    #     for go_vct, vh in enumerate(self._vh_list[2:]):
-    #         relative_vector = vectors[go_vct + 2]
-    #         vector_in_space = trans_vector_to_absolute(relative_vector, vertices[list(vh.ref_plane)])
-    #         if np.isnan(vertices[vh.from_id]).any():
-    #             raise ValueError(
-    #                 f"While building Vtx {vh.to_id}, Vtx {vh.from_id} is invalid {vertices[vh.from_id]}!")
-    #         else:
-    #             vertices[vh.to_id] = vertices[vh.from_id] + vector_in_space
-    #         # logger.trace("goid:{}, vh:{}, vertices[vh.from_id]:{}, vertices[vh.to_id:{}]:{}".
-    #         #              format(go_vct, vh, vertices[vh.from_id], vh.to_id, vertices[vh.to_id]))
-    #     return np.array(vertices)
-    #
-    # def vh_list(self):
-    #     return deepcopy(self._vh_list)
-    #
-    # def get_lines_for_k3d_plot(self):
-    #     return self._vertex_tree.get_lines_for_k3d_plot()
 
-# TODO: Vectors for recording points?
-
-
-class VertexVectorMapper(VMapper):
+class VertexVectorMapperOld(VMapperOld):
     """
     Main Class recording all maps between the dispersed vertices system and the vector system
 
@@ -457,18 +689,13 @@ class VertexVectorMapper(VMapper):
         ----------
         input_obj:
             ArrayLike or Vertices (with coords).
-            All faces must be from a single connected object.
         random_seed: int
             0: closest-neighbor traverse
             other values: random
         """
         super().__init__(random_seed)
-        # self._vh_list = []
         self.__fixed_vertex_ids = OrderedDict()
         self.__unfixed_vertex_ids = OrderedDict()
-        # self._id_to_triplets = {}
-        # self._vertex_tree = _VertexTree()  # for plotting
-        # self.random_seed = random_seed
         # if is Vertices
         if "coords" in dir(input_obj):
             vts = input_obj.coords
@@ -487,7 +714,6 @@ class VertexVectorMapper(VMapper):
         triplets_list: ArrayLike or List[ArrayLike]
             Must be coordinates of Vertices.
         """
-        # TODO do not use duplicated points as the reference face, both in rooting and extending
         self.__unfixed_vertex_ids = OrderedDict([(_id, None) for _id in range(len(triplets_list))])
         triplet_set = set([tuple(triplet_) for triplet_ in triplets_list])
         assert len(triplet_set) >= 3, "Insufficient valid points!"
@@ -495,9 +721,9 @@ class VertexVectorMapper(VMapper):
             # TODO I don't know why the random mode will be significantly smaller.
             #      Should find out where it is and optimize it.
             random.seed(self.random_seed)
+            # TODO unfinished
         else:
             # TODO: use k-d tree to speed up
-            # TODO: without k-d tree, scipy.spatial.distance.pdist+squareform may be a faster alternative
             assert len(triplets_list) < 2000, "larger number of points not implemented yet!"
             diffs = triplets_list[:, np.newaxis, :] - triplets_list[np.newaxis, :, :]
             pairwise_distances = np.sqrt(np.sum(diffs ** 2, axis=-1))
@@ -546,17 +772,247 @@ class VertexVectorMapper(VMapper):
                     # it can not be taken to form a valid reference plane, use the previous reference plane instead
                     self._id_to_triplets[to_id] = self._id_to_triplets[from_id]
                 else:
-                    traced_back = self._vertex_tree.trace(from_id, n_steps=2)
+                    traced_back = self._vertex_tree.trace(to_id, n_steps=2)
                     if len(traced_back) == 3:
                         self._id_to_triplets[to_id] = traced_back
                     else:  # from_id belongs to (id_1, id_2)
                         self._id_to_triplets[to_id] = self._id_to_triplets[from_id]
 
-    # def _append(self, vh: _VectorHandler):
-    #     self._vh_list.append(vh)
+    def __to_id_update(self, to_id):
+        del self.__unfixed_vertex_ids[to_id]
+        self.__fixed_vertex_ids[to_id] = None
+
+
+class FaceVectorMapper(VMapper):
+    def __init__(self,
+                 random_seed: int = 0):
+        super().__init__(random_seed)
+        pass
+
+
+class VertexVectorMapper(VMapper):
+    """
+    Main Class recording all maps between the dispersed vertices system and the vector system
+
+    """
+    def __init__(self,
+                 input_obj_list: List,  # TODO: should also accept ShapeAlignment for convenience
+                 mode: str = "linear-variation",
+                 random_seed: int = 0,
+                 num_vs=10):
+        """
+        Parameters
+        ----------
+        input_obj_list:
+            A list of ArrayLike or Vertices (with coords) objects.
+        mode: str
+            mode of building the mapper. Under test and development, so it was not fixed yet.
+        random_seed: int
+            0: closest-neighbor traverse
+            other values: random
+        num_vs:
+            number of vertices as local topology.
+        """
+        super().__init__(random_seed)
+        self.__fixed_vertex_ids = OrderedDict()
+        self.__unfixed_vertex_ids = OrderedDict()
+
+        if not mode.startswith("linear"):
+            self._vertex_tree = _VertexFlow()
+
+        # if is Vertices
+        assert isinstance(input_obj_list, list) and len(input_obj_list) > 0, "please input valid list of vertices!"
+        if "coords" in dir(input_obj_list[0]):
+            vts_list = [vt_obj.coords for vt_obj in input_obj_list]
+        else:
+            vts_list = input_obj_list
+        self.tri_ll = vts_list
+        self.len_samples = len(self.tri_ll)
+        self.len_vertices = len(self.tri_ll[0])
+        self.kd_trees = None
+        self.num_vs = num_vs
+        self.__update(mode=mode)
+
+    def __update(self, mode):
+        """
+        Build the maps between the dispersed vertices system and the vector system.
+        """
+        self.check_duplicates()
+        assert self.len_vertices > 3
+        # TODO: if using variation order, this is not usable
+        self.__unfixed_vertex_ids = OrderedDict([(_id, None) for _id in range(self.len_vertices)])
+
+        if mode.endswith("-random"):
+            if mode.startswith("linear-"):
+                # TODO I don't know why the random mode will be significantly smaller.
+                #      Should find out where it is and optimize it.
+                construct_v_orders = list(range(self.len_vertices))
+                random.seed(self.random_seed)
+                random.shuffle(construct_v_orders)
+                self.__update_linear_build(construct_v_orders)
+            else:  # mode == "linear-variation":
+                raise ValueError("not implemented mode: {}".format(mode))
+        elif mode.endswith("-local") or mode.endswith("-variation"):
+            # TODO: efficiency can be improved
+            # TODO: use the distance to mimic the changes to find the most conserved part to start
+            #       the real conserved part should be calculated from sequential vectors? probably too compute-expensive
+            # TODO: phylogenetic variation instead of all-to-all
+            # TODO: can be also model-based to accommodate to scale-change
+            # TODO: some points may still be duplicate in a few samples after deduplication, extra care for recons
+
+            # TODO: try variation weighted by distance
+            self.kd_trees = []
+            for triplets_list in self.tri_ll:
+                self.kd_trees.append(KDTree(triplets_list))
+            construct_v_orders, variation_orders, variations = self.gen_variation()
+            if mode.startswith("linear-"):
+                self.__update_linear_build(construct_v_orders)
+            elif mode.startswith("network-"):
+                if mode == "network-local":
+                    self.__update_network_build(construct_v_orders, variation_orders, variations)
+        else:
+            raise ValueError("invalid mode: {}".format(mode))
+
+    def __update_network_build(self, construct_v_orders, variation_orders, variations):
+        # first plane
+        id_1 = construct_v_orders[0]
+        id_2, id_3 = variation_orders[id_1][1:3]
+        self._vertex_tree.set_root(id_1)
+        self._append([_VectorHandler(id_1, id_2, ref_plane_triplet=None)])
+        self.__to_id_update(id_1)
+        self.__to_id_update(id_2)
+        self._vertex_tree.add_link(id_1, id_2)
+        initial_ref_plane_ids = (id_1, id_2, id_3)
+        self._append([_VectorHandler(id_1, id_3, ref_plane_triplet=initial_ref_plane_ids),
+                      _VectorHandler(id_2, id_3, ref_plane_triplet=initial_ref_plane_ids)])  # +
+        self.__to_id_update(id_3)
+        self._vertex_tree.add_link(id_1, id_3)
+        self._vertex_tree.add_link(id_2, id_3)
+        for initial_id in initial_ref_plane_ids:
+            self._id_to_triplets[initial_id] = initial_ref_plane_ids
+
+        # add more points
+        # TODO: improve efficiency
+        while self.__unfixed_vertex_ids:
+            candidate_ids = {}
+            for fixed_id in self.__fixed_vertex_ids:
+                for ordered_id, variation in zip(variation_orders[fixed_id], variations[fixed_id]):
+                    if ordered_id in self.__unfixed_vertex_ids:
+                        if ordered_id not in candidate_ids:
+                            candidate_ids[ordered_id] = (variation, fixed_id)
+                        elif candidate_ids[ordered_id][0] > variation:
+                            candidate_ids[ordered_id] = (variation, fixed_id)
+            if not candidate_ids:
+                raise NotImplementedError("not candidate ids")
+                # # TODO: consider variation here too, use shortest distance to fixed ids in the first kd_tree for now
+                # distances, indices = self.kd_trees[0].query(point, k=self.num_vs * 10)
+            candidate_id_sorted = sorted(candidate_ids, key=lambda x: candidate_ids[x][0])
+            to_id = candidate_id_sorted[0]
+            supporting_ids = [spi for spi in variation_orders[to_id] if spi in self.__fixed_vertex_ids]
+            min_num_sp = min(len(self.__fixed_vertex_ids), self.num_vs)
+            if len(supporting_ids) < min_num_sp:
+                # TODO: use all kd_trees later, use the first kd_tree for now
+                # TODO: is the distance in order?
+                distances, indices = self.kd_trees[0].query(self.tri_ll[0][to_id], k=self.len_vertices-1)
+                indices = list(indices)
+                supporting_ids_set = set(supporting_ids)
+                while len(supporting_ids) < min_num_sp:
+                    potential_id = indices.pop(0)
+                    if potential_id not in supporting_ids_set and potential_id in self.__fixed_vertex_ids:
+                        supporting_ids.append(potential_id)
+            vh_list = []
+            for from_id in supporting_ids[:min_num_sp]:
+                self._vertex_tree.add_link(from_id, to_id)
+                # TODO when reconstruct, if the plane is collapsed due to duplicate points, skip the vh
+                vh_list.append(_VectorHandler(from_id, to_id, ref_plane_triplet=self._id_to_triplets[from_id]))
+            self._append(vh_list)
+            self.__to_id_update(to_id)
+            # TODO: chose a relative large plane?
+            self._id_to_triplets[to_id] = tuple([to_id] + supporting_ids[:2])
+
+    def __update_linear_build(self, construct_v_orders):
+        # start from the vertex
+        id_1, id_2, id_3 = construct_v_orders[:3]
+        self._vertex_tree.set_root(id_1)
+        self._append([_VectorHandler(id_1, id_2, ref_plane_triplet=None)])  # +
+        # [None] * (self.num_vs - 1))
+        self.__to_id_update(id_1)
+        self.__to_id_update(id_2)
+        self._vertex_tree.add_link(id_1, id_2)
+        initial_ref_plane_ids = (id_1, id_2, id_3)
+        self._append([_VectorHandler(id_1, id_3, ref_plane_triplet=initial_ref_plane_ids),
+                      _VectorHandler(id_2, id_3, ref_plane_triplet=initial_ref_plane_ids)])  # +
+        # [None] * (self.num_vs - 2))
+        self.__to_id_update(id_3)
+        # self._vertex_tree.add_link(id_1, id_3)
+        self._vertex_tree.add_link(id_2, id_3)
+        for initial_id in initial_ref_plane_ids:
+            self._id_to_triplets[initial_id] = initial_ref_plane_ids
+
+        # add more points
+        from_ids = initial_ref_plane_ids
+        for id_id, to_id in enumerate(construct_v_orders):
+            if id_id < 3:
+                continue
+            vh_list = []
+            for from_id in from_ids:
+                # self._vertex_tree.add_link(from_id, to_id)
+                # TODO when reconstruct, if the plane is collapsed due to duplicate points, skip the vh
+                vh_list.append(_VectorHandler(from_id, to_id, ref_plane_triplet=self._id_to_triplets[from_id]))
+            # vh_list += [None] * (self.num_vs - len(vh_list))  # to avoid making ragged array in downstream analysis
+            self._append(vh_list)
+            self.__to_id_update(to_id)
+            # if from_id, to id are duplicates across all samples, this can be problematic
+            self._vertex_tree.add_link(from_ids[-1], to_id)
+            self._id_to_triplets[to_id] = tuple(construct_v_orders[id_id - 2: id_id + 1])
+            from_ids = construct_v_orders[max(id_id + 1 - self.num_vs, 0): id_id + 1]
+            # traced_back = self._vertex_tree.trace(from_id[-1], n_steps=2)
+            # if len(traced_back) == 3:
+            #     self._id_to_triplets[to_id] = traced_back
+            # else:  # from_id belongs to (id_1, id_2)
+            #     self._id_to_triplets[to_id] = self._id_to_triplets[from_id]
 
     def __to_id_update(self, to_id):
         del self.__unfixed_vertex_ids[to_id]
         self.__fixed_vertex_ids[to_id] = None
+
+    def gen_variation(self):
+        """
+        """
+        # generate the variation statistics and find the order of the construction
+        variation_orders = []  # used now and later
+        variations = []  # used now and later
+        top_k_var_sum = []  # used to find the start vertex with the smallest neighboring variation
+        for go_v in range(self.len_vertices):
+            indices_set = set()
+            for go_sample, kd_tree in enumerate(self.kd_trees):
+                distances, indices = kd_tree.query(self.tri_ll[go_sample][go_v], k=self.num_vs * 10)
+                indices_set |= set(indices)
+            indices_list = np.array(sorted(indices_set))
+            distances_array = []
+            for go_sample in range(self.len_samples):
+                distances_array.append(cdist([self.tri_ll[go_sample][go_v]],
+                                              self.tri_ll[go_sample][indices_list])[0])
+            standard_dev = np.array(distances_array).std(axis=0)
+            arg_sort_ids = standard_dev.argsort()
+            variation_orders.append(indices_list[arg_sort_ids])
+            variations.append(standard_dev[arg_sort_ids])
+            top_k_var_sum.append(sum(variations[-1][:self.num_vs * 10]))  # Apr 21 just fix a bug
+        top_k_var_sum = np.array(top_k_var_sum)
+        construct_v_orders = top_k_var_sum.argsort()
+        return construct_v_orders, variation_orders, variations
+
+    def check_duplicates(self):
+        """
+        check if there are duplicated points for each samples
+
+        """
+        # TODO: allow missing but not allow duplicates
+        across_sample_duplicates = find_duplicates_in_vertices_list(self.tri_ll)
+        # check if number of across-sample duplicated-free points is sufficient
+        logger.info("{} ouf of {} sample-wide unique points".format(
+            self.len_vertices - len(across_sample_duplicates),
+            self.len_vertices))
+        assert len(across_sample_duplicates) == 0, "sample-wide duplicates exist!"
 
 

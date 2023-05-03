@@ -68,3 +68,25 @@ def uniform_vertices(
 
 
     return np.array([new_vx, new_vy, new_vz]).T
+
+
+def find_duplicates_in_vertices_list(_vertices_list: List):
+    across_sample_duplicates = {}
+    recorded_triplets = {}
+    for go_t_, triplet_ in enumerate(_vertices_list[0]):
+        triplet_ = tuple(triplet_)
+        if triplet_ in recorded_triplets:
+            across_sample_duplicates[go_t_] = recorded_triplets[triplet_]
+        else:
+            recorded_triplets[triplet_] = go_t_
+    del recorded_triplets
+    if across_sample_duplicates:
+        for triplets_list in _vertices_list[1:]:
+            for go_dup_, go_t_ in list(across_sample_duplicates.items()):
+                if not np.array_equal(triplets_list[go_dup_], triplets_list[go_t_]):
+                    del across_sample_duplicates[go_dup_]
+            if not across_sample_duplicates:
+                break
+    # triplet_set = set([tuple(unique_ids) for triplet_ in triplets_list_list])
+    # assert len(triplet_set) >= 3, "Insufficient valid points!"
+    return across_sample_duplicates

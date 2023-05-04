@@ -5,7 +5,7 @@
 """
 import numpy as np
 from scipy.optimize import minimize, basinhopping
-from phyloshape.shape.src.vectors import FaceVectorMapper, VertexVectorMapper
+from phyloshape.shape.src.vectors import VertexVectorMapper
 from phyloshape.shape.src.shape import ShapeAlignment
 from phyloshape.shape.src.vertex import Vertices
 from phyloshape.phylo.src.models import *
@@ -74,24 +74,27 @@ class PhyloShape:
             label, leaf_node.vertices = self.shapes[leaf_node.name]
             # logger.trace(label + str(leaf_node.vertices.coords))
 
-    def build_vv_translator(self, mode="network-local", num_vs=20):
+    def build_vv_translator(self, mode="network-local", num_vs=20, num_vt_iter=5):
+        """
+        """
         self.vv_translator = None
-        if self.faces is None or len(self.faces) == 0:
-            # build the translator using vertices only
-            # TODO use alignment information rather than using the vertices of the first sample
-            if mode == "old":
-                label, vertices = self.shapes[0]
-                from phyloshape.shape.src.vectors import VertexVectorMapperOld
-                self.vv_translator = VertexVectorMapperOld(vertices)
-                logger.info(f"using {label} to construct the vector system ..")
-            else:
-                self.vv_translator = VertexVectorMapper(
-                    [vt.coords for lb, vt in self.shapes],
-                    mode=mode,
-                    num_vs=num_vs)
+        # if self.faces is None or len(self.faces) == 0:
+        # build the translator using vertices only
+        # TODO use alignment information rather than using the vertices of the first sample
+        if mode == "old":
+            label, vertices = self.shapes[0]
+            from phyloshape.shape.src.vectors import VertexVectorMapperOld
+            self.vv_translator = VertexVectorMapperOld(vertices)
+            logger.info(f"using {label} to construct the vector system ..")
         else:
-            # TODO: FaceVectorMapper.__init__(): auto detect face and face_v_ids
-            self.vv_translator = FaceVectorMapper(self.faces.vertex_ids)
+            self.vv_translator = VertexVectorMapper(
+                [vt.coords for lb, vt in self.shapes],
+                mode=mode,
+                num_vs=num_vs,
+                num_vt_iter=num_vt_iter,
+                )
+        # else:
+        #     self.vv_translator = FaceVectorMapper(self.faces.vertex_ids)
         len_vt = len(self.vv_translator.vh_list())
         logger.info("Vertex:Vector ({}:{}) translator built.".format(len_vt + 1, len_vt))
 
@@ -244,12 +247,17 @@ class PhyloShape:
                 self.tree[anc_node_id].vertices = \
                     Vertices(self.vv_translator.to_vertices(real_vectors))
 
-    def reconstruct_ancestral_shapes_using_ml(self, mode="network-local", num_vs: int = 20, num_proc: int = 1):
+    def reconstruct_ancestral_shapes_using_ml(
+            self,
+            mode="network-local",
+            num_vs: int = 20,
+            num_vt_iter: int = 5,
+            num_proc: int = 1):
         """
         maximum likelihood approach
         :return:
         """
-        self.build_vv_translator(mode, num_vs=num_vs)
+        self.build_vv_translator(mode, num_vs=num_vs, num_vt_iter=num_vt_iter)
         self.build_tip_vectors()
         self.sym_ancestral_vectors()
         self.formularize_log_like(log_func=s_log)

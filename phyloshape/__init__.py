@@ -7,7 +7,6 @@ from phyloshape.shape import \
     Faces, \
     Shape, \
     ShapeAlignment, \
-    FaceVectorMapper, \
     VertexVectorMapper
 from phyloshape.phylo import \
     PhyloShape, \

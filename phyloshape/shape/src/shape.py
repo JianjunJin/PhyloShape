@@ -3,14 +3,13 @@
 """Core PhyloShape class object of the phyloshape package.
 
 """
-from typing import Optional
+from typing import Optional, Union
+from copy import deepcopy
 from pathlib import Path
 from loguru import logger
 from plyfile import PlyData, PlyElement
 from PIL import Image
 import numpy as np
-from copy import deepcopy
-from typing import Union
 from phyloshape.shape.src.face import Faces
 from phyloshape.shape.src.vertex import Vertices
 from phyloshape.shape.src.network import IdNetwork
@@ -38,16 +37,17 @@ class Shape:
         self.tpath = self._get_image_path(texture_image_file)
         """: Path of the input image/texture file."""
 
-        self.vertices = Vertices()
+        # init data objects empty
+        self.vertices: Vertices = Vertices()
         """: phyloshape.Vertices object containing vertex data."""
-        self.faces = Faces()
+        self.faces: Faces = Faces()
         """: phyloshape.Faces object containing faces data."""
-        self.network = IdNetwork()
+        self.network: IdNetwork = IdNetwork()
         """: phyloshape.IdNetwork object containing network data."""
         self.texture_image_obj: Image = None
         """: PIL.Image object parsed from the texture file."""
         self.texture_image_data: np.ndarray = None
-        """: ..."""
+        """: Image data stored as an array."""
 
         # parse the object file and update the network.
         if not self.opath.exists():

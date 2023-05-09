@@ -3,22 +3,24 @@
 """Reconstruct ancestral shape
 
 """
+
+from typing import Union, Dict, TypeVar
+from pathlib import Path
+
+from loguru import logger
 import numpy as np
 from scipy.optimize import minimize, basinhopping
-from phyloshape.shape.src.vectors import VertexVectorMapper
-from phyloshape.shape.src.shape import ShapeAlignment
-from phyloshape.shape.src.vertex import Vertices
-from phyloshape.phylo.src.models import *
-from typing import Union, Dict, TypeVar
 from symengine import Symbol, lambdify, expand
 # from sympy import Symbol, lambdify, expand
 from symengine import log as s_log
-# from sympy import log as s_log
-# import sympy
-Url = TypeVar("Url")
-from pathlib import Path
 from toytree.io.src.treeio import tree
-from loguru import logger
+
+from phyloshape.shape.src.vectors import VertexVectorMapper
+from phyloshape.shape.src.shape_alignment import ShapeAlignment
+from phyloshape.shape.src.vertex import Vertices
+from phyloshape.phylo.src.models import *
+
+Url = TypeVar("Url")
 logger = logger.bind(name="phyloshape")
 
 
@@ -33,18 +35,27 @@ class Tree:
 
 
 class PhyloShape:
-    """
+    """...
+
+    The main function call is `reconstruct_ancestral_shapes_using_ml()`
 
     """
-    def __init__(self,
-                 tree_obj,
-                 shape_alignments: ShapeAlignment,
-                 model=None,
-                 vect_transform=None,
-                 vect_inverse_transform=None):
-        """
-        :param tree_obj: TODO can be str/path/url
-        :param shape_alignments: shape labels must match tree labels
+    def __init__(
+        self,
+        tree_obj,
+        shape_alignments: ShapeAlignment,
+        model=None,
+        vect_transform=None,
+        vect_inverse_transform=None,
+    ):
+        """...
+
+        Parameters
+        ----------
+        tree_obj: TODO can be str/path/url
+            ...
+        shape_alignments: ShapeAlignment
+            ...shape labels must match tree labels
         """
         self.tree = tree_obj
         self.shapes = shape_alignments
@@ -75,7 +86,9 @@ class PhyloShape:
             # logger.trace(label + str(leaf_node.vertices.coords))
 
     def build_vv_translator(self, mode="network-local", num_vs=20, num_vt_iter=5):
-        """
+        """Assigns an initialized VertexVectorMapper to self.vv_translator
+
+        The vv_translator ...
         """
         self.vv_translator = None
         # if self.faces is None or len(self.faces) == 0:
@@ -98,7 +111,12 @@ class PhyloShape:
         len_vt = len(self.vv_translator.vh_list())
         logger.info("Vertex:Vector ({}:{}) translator built.".format(len_vt + 1, len_vt))
 
-    def build_tip_vectors(self):
+    def build_tip_vectors(self) -> None:
+        """Assigns a .vectors attribute to each Node.
+
+        The tip Node vector information is created by calling the
+        vv_translator.to_vectors() function on the Node vertices.
+        """
         if self.vect_transform is None:
             for node_id in range(self.tree.ntips):
                 leaf_node = self.tree[node_id]
@@ -273,5 +291,7 @@ class PhyloShape:
         pass
 
 
+if __name__ == "__main__":
 
-
+    # EXAMPLE
+    pass

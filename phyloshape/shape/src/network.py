@@ -15,6 +15,8 @@ from numpy.typing import ArrayLike
 from typing import Union, List, Dict
 from copy import deepcopy
 from collections import OrderedDict
+from loguru import logger
+logger = logger.bind(name="phyloshape")
 
 logger = logger.bind(name="phyloshape")
 
@@ -419,6 +421,10 @@ class IdNetwork:
         return found_to_return
 
     def find_unions(self):
+        """
+
+        :return:
+        """
         unions = []
         candidate_vs = set(self.adjacency)
         while candidate_vs:

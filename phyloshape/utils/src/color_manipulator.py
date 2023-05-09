@@ -63,3 +63,7 @@ def rgb_to_hsv(rgb_array: ArrayLike):
 
     return out.reshape(in_shape)
 
+
+# TODO: color to wave length distribution?
+
+

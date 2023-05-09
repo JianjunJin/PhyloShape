@@ -11,6 +11,8 @@ from phyloshape.utils import ID_TYPE, COORD_TYPE, RGB_TYPE
 # from phyloshape.shape.src.vertex import Vertices
 from numpy.typing import ArrayLike
 from typing import Union, List, Generator
+from loguru import logger
+logger = logger.bind(name="phyloshape")
 
 
 class Faces:
@@ -46,6 +48,9 @@ class Faces:
         new_face.texture_image_data = np.array(self.texture_image_data, RGB_TYPE)
         new_face.texture_anchor_coords = deepcopy(self.texture_anchor_coords)
         return new_face
+
+    def __bool__(self):
+        return bool(len(self.vertex_ids))
 
     # def __iter__(self):
     #     for vertex_id in self.vertex_ids:

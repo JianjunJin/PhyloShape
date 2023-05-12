@@ -25,7 +25,7 @@ Methods
 """
 
 from __future__ import annotations
-from typing import Sequence, Optional, Mapping, Iterator
+from typing import Sequence, Optional, Dict, Iterator, Tuple
 
 from loguru import logger
 import numpy as np
@@ -37,8 +37,11 @@ logger = logger.bind(name="phyloshape")
 
 
 class Model:
-    """...
+    """The core phyloshape class object for representing 3D models.
 
+    Note
+    ----
+    vertices and faces are ...
     """
     def __init__(
         self,
@@ -52,8 +55,8 @@ class Model:
         # complex data storage
         self._graph: Graph = None
         """: Graph of edges between vertices on a mesh (Mapping[int, Edge])"""
-        # self._vectors: Mapping[int, Vector] = None
-        # """: Vectors between any two vertices within a cutoff)"""
+        self._vectors: Dict[Tuple[int, int], Vector] = {}
+        """: Vectors between any two vertices"""
 
     def __repr__(self) -> str:
         return f"Model(nverts={len(self.vertices)}, nfaces={len(self.faces)})"
@@ -63,7 +66,7 @@ class Model:
     ##################################################################
     def _build_graph_from_faces(self) -> None:
         """Extract all edges from faces to construct a mesh graph"""
-        if self.faces is None:
+        if not self.faces:
             raise ValueError("Cannot build graph without Face/Edge data.")
 
         # iterate over faces extracting each edge and getting its dist
@@ -115,8 +118,8 @@ class Model:
         plot = plot if plot is not None else k3d.plot()
 
         # if only vertices then plot points
-        if self.faces is None:
-            coords = self.vertices.coords.copy().astype(np.float32)
+        if not self.faces:
+            coords = np.array([i.coords for i in self.vertices], dtype=np.float32)
             coords[:, 0] += xbaseline
             coords[:, 1] += ybaseline
             coords[:, 2] += zbaseline

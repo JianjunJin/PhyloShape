@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
-"""Core PhyloShape class object of the phyloshape package.
+"""The Faces class stores polygon face info as arrays of vertex IDs.
 
+The Vertices and Faces classes are stored in Shape instances.
 """
 
 from loguru import logger
@@ -12,27 +13,48 @@ from phyloshape.utils import ID_TYPE, COORD_TYPE, RGB_TYPE
 from numpy.typing import ArrayLike
 from typing import Union, List, Generator
 from loguru import logger
+
 logger = logger.bind(name="phyloshape")
 
 
 class Faces:
-    def __init__(self,
-                 # TODO specify the dimension of the input array/list
-                 vertex_ids: Union[ArrayLike, List, None] = None,
-                 # vertices: Vertices = None,
-                 texture_ids: Union[ArrayLike, List, None] = None,
-                 texture_anchor_percent_coords: Union[ArrayLike, List, None] = None,
-                 texture_image_data: ArrayLike = None):
-        self.vertex_ids = np.array([], dtype=ID_TYPE) if vertex_ids is None else np.array(vertex_ids, dtype=ID_TYPE)
-        # self.__vertices = Vertices() if vertices is None else vertices
-        self.texture_ids = np.array([], dtype=ID_TYPE) if texture_ids is None else np.array(texture_ids, dtype=ID_TYPE)
-        self.texture_anchor_percent_coords = np.array([], dtype=COORD_TYPE) if texture_anchor_percent_coords is None \
+    def __init__(
+        self,
+        vertex_ids: Union[ArrayLike, List, None] = None,
+        texture_ids: Union[ArrayLike, List, None] = None,
+        texture_anchor_percent_coords: Union[ArrayLike, List, None] = None,
+        texture_image_data: ArrayLike = None,
+    ):
+        # Array of vertex IDs making up each face. A face is composed
+        # of 3 or more vertex IDs, so the shape is (nfaces, >=3).
+        self.vertex_ids = (
+            np.array([], dtype=ID_TYPE) if vertex_ids is None
+            else np.array(vertex_ids, dtype=ID_TYPE)
+        )
+
+        self.texture_ids = (
+            np.array([], dtype=ID_TYPE) if texture_ids is None 
+            else np.array(texture_ids, dtype=ID_TYPE)
+        )
+
+        self.texture_anchor_percent_coords = (
+            np.array([], dtype=COORD_TYPE) if texture_anchor_percent_coords is None
             else np.array(texture_anchor_percent_coords, dtype=COORD_TYPE)
-        self.texture_image_data = np.array([], dtype=RGB_TYPE) if texture_image_data is None else texture_image_data
+        )
+
+        self.texture_image_data = (
+            np.array([], dtype=RGB_TYPE) if texture_image_data is None
+            else texture_image_data
+        )
+
         if texture_anchor_percent_coords is None and texture_image_data is None:
             self.texture_anchor_coords = None
         else:
-            self.texture_anchor_coords = self.texture_anchor_percent_coords * self.texture_image_data.shape[:2]
+            self.texture_anchor_coords = (
+                self.texture_anchor_percent_coords * self.texture_image_data.shape[:2])
+
+    def __repr__(self):
+        return f"Faces({self.vertex_ids.shape})"
 
     def __len__(self):
         return len(self.vertex_ids)
@@ -87,3 +109,8 @@ class Faces:
         # else:
         #     raise ValueError(coord_type + " is not a valid input! coord_type must be either vertex or texture!")
 
+
+if __name__ == "__main__":
+
+    f = Faces(vertex_ids=np.zeros(shape=(10, 2)))
+    print(f)

@@ -115,7 +115,7 @@ class Model:
     ) -> k3d.Plot:
         """Return K3D plot as points or mesh.
         """
-        plot = plot if plot is not None else k3d.plot()
+        plot = plot if plot is not None else k3d.plot(grid_visible=False, antialias=5)
 
         # if only vertices then plot points
         if not self.faces:

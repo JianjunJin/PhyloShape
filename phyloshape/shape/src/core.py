@@ -50,12 +50,12 @@ class Vertex(_Unique):
             self._color = np.array([0, 0, 0])
         return self._color
 
-    def get_vector_from(self, vertex: Vertex, face: Optional[Face] = None) -> Vector:
-        return Vector(self, vertex, face)
+    # def get_vector_from(self, vertex: Vertex, face: Optional[Face] = None) -> Vector:
+    #     return Vector(self, vertex, face)
 
-    def get_relative_vector_from(self, vertex: Vertex, face: Face) -> Vector:
-        vec = self.get_vector_from(vertex, face)
-        return transform_vector_to_relative(vec, face)
+    # def get_relative_vector_from(self, vertex: Vertex, face: Face) -> Vector:
+    #     vec = self.get_vector_from(vertex, face)
+    #     return transform_vector_to_relative(vec, face)
 
 
 class Face(tuple):
@@ -66,10 +66,8 @@ class Face(tuple):
     def __repr__(self):
         return f"Face({tuple(i.id for i in self)})"
 
-    def coordinates(self, relative: bool = False) -> List[Tuple[float, float, float]]:
-        if not relative:
-            return tuple(i.absolute for i in self)
-        return tuple(i.relative for i in self)
+    def coordinates(self) -> List[Tuple[float, float, float]]:
+        return tuple(i.coords for i in self)
 
     @property
     def edges(self) -> Tuple[Tuple[int, int]]:
@@ -123,11 +121,11 @@ class Vector(_Unique):
 
     @property
     def unit(self) -> np.ndarray:
-        """Return unit vector in normed space (sphere) of length 1"""
+        """Return unit vector from face in normed space (sphere) of length 1"""
         if self._unit is None:
             if self._face is None:
                 raise ValueError(
-                    "Vector must have a .face value to compute a unit vector")
+                    "Vector must have a .face to compute a unit vector")
             self._unit = get_unit_vector_from_face(*self.face.coordinates())
         return self._unit
 

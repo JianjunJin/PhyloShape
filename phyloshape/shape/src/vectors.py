@@ -12,7 +12,7 @@ import numpy as np
 from numpy.typing import ArrayLike
 from phyloshape.utils import trans_vector_to_relative, trans_vector_to_absolute
 from phyloshape.utils.src.vertices_manipulator import find_duplicates_in_vertices_list
-# from phyloshape.utils.src.stats import mean_without_outliers
+from phyloshape.utils.src.stats import mean_without_outliers
 from phyloshape.shape.src.shape import ShapeAlignment
 from loguru import logger
 from scipy.spatial import KDTree
@@ -384,6 +384,7 @@ class VMapper:
         # no need to store as class variable, but here stored for debugging
         self._id_to_triplets = {}  # for going back to the starting vertices and more
 
+        self.__new_vt_order = []
         # self._vertex_tree = _VertexFlow()  # for plotting and tracing
         self._vertex_tree = _VertexTree()  # for plotting and tracing
         self.random_seed = random_seed
@@ -425,7 +426,8 @@ class VMapper:
             #     relative_v1.append(np.array([None, None, None]))
             # else:
             space_v1 = vertices[vh_first.to_id] - vertices[vh_first.from_id]
-            norm_v1 = np.linalg.norm(space_v1)
+            # norm_v1 = np.linalg.norm(space_v1)
+            norm_v1 = (sum(space_v1 ** 2)) ** 0.5  # for compatible with sympy for testing
             # relative_v1.append(np.array([norm_v1, 0, 0]))
             vectors.append(np.array([norm_v1, 0, 0]))
         # vectors = [relative_v1]
@@ -457,7 +459,10 @@ class VMapper:
                 # logger.trace("relative vector: {}".format(relative_vector))
             # vectors.append(relative_vectors)
         # TODO: remove the redundant half vectors, not influencing the reconstruction given PCA though
-        return np.array(vectors, dtype=np.float64)
+        try:
+            return np.array(vectors, dtype=np.float64)
+        except TypeError:  # for testing and being compatible with sympy
+            return vectors
 
     def to_vertices(self, vectors) -> ArrayLike:
         assert len(vectors) == sum(self._shape), \
@@ -477,13 +482,12 @@ class VMapper:
         # second vh bundle has two valid handlers
         # TODO, weights can be calculated from vector variations
         second_vh_bundle = self._vh_bundle_list[1]
-        vertices[second_vh_bundle[0].to_id] = np.median([vertices[vh.from_id] + vectors[go_v + go_h]
-                                                         for go_h, vh in enumerate(second_vh_bundle)], axis=0)
-
+        # vertices[second_vh_bundle[0].to_id] = np.median([vertices[vh.from_id] + vectors[go_v + go_h]
+        #                                                  for go_h, vh in enumerate(second_vh_bundle)], axis=0)
         # using mean without outliers does not work!
-        # here_vertices = [vertices[vh.from_id] + vectors[go_v + go_h] for go_h, vh in enumerate(second_vh_bundle)]
-        # here_vertices = np.array(here_vertices, dtype=np.float64)
-        # vertices[second_vh_bundle[0].to_id] = [mean_without_outliers(here_vertices[:, i]) for i in range(3)]
+        here_vertices = [vertices[vh.from_id] + vectors[go_v + go_h] for go_h, vh in enumerate(second_vh_bundle)]
+        here_vertices = np.array(here_vertices, dtype=np.float64)
+        vertices[second_vh_bundle[0].to_id] = [mean_without_outliers(here_vertices[:, i]) for i in range(3)]
         go_v += self._shape[1]
 
         # following vh bundle requires converting relative vectors to absolute vectors
@@ -515,7 +519,9 @@ class VMapper:
             # len(new_bundle_list) equals num of vertices & new_vertices
             new_bundle_list = self._vh_bundle_list[-self.num_vs:] + self._vh_bundle_list[self.num_vs - 1: -self.num_vs]
             # TODO if to_vectors was modified to remove the last half vector, the new_vectors shall be modified
-            new_vectors = vectors[-len_vertices * self.num_vs:]
+            new_vectors = np.concatenate((vectors[-self.num_vs ** 2:],
+                                          vectors[-len_vertices * self.num_vs: -self.num_vs ** 2]),
+                                         axis=0)
             for go_b, vh_bundle in enumerate(new_bundle_list):
                 relative_vectors = new_vectors[go_b * self.num_vs: (go_b + 1) * self.num_vs]
                 self.__update_vertex_with_vh_bundle(
@@ -543,10 +549,10 @@ class VMapper:
                 raise ValueError(
                     f"While building Vtx {vh.to_id}, Vtx {vh.from_id} is invalid {vertices[vh.from_id]}!")
             new_triplets.append(vertices[vh.from_id] + vector_in_space)
-        vertices[vh_bundle[0].to_id] = np.median(new_triplets, axis=0)
+        # vertices[vh_bundle[0].to_id] = np.median(new_triplets, axis=0)
         # using mean without outliers does not work!
-        # new_triplets = np.array(new_triplets, dtype=np.float64)
-        # vertices[vh_bundle[0].to_id] = [mean_without_outliers(new_triplets[:, i]) for i in range(3)]
+        new_triplets = np.array(new_triplets, dtype=np.float64)
+        vertices[vh_bundle[0].to_id] = [mean_without_outliers(new_triplets[:, i]) for i in range(3)]
         # self._debug_vertices.append(new_triplets)
 
     def vh_list(self):
@@ -867,7 +873,8 @@ class VertexVectorMapper(VMapper):
                 construct_v_orders = list(range(self.len_vertices))
                 random.seed(self.random_seed)
                 random.shuffle(construct_v_orders)
-                self.__update_linear_build(construct_v_orders)
+                self.__new_vt_order = construct_v_orders
+                self.__update_linear_build(self.__new_vt_order)
             else:  # mode == "linear-variation":
                 raise ValueError("not implemented mode: {}".format(mode))
         elif mode.endswith("-local") or mode.endswith("-variation"):
@@ -883,11 +890,12 @@ class VertexVectorMapper(VMapper):
             for triplets_list in self.tri_ll:
                 self.kd_trees.append(KDTree(triplets_list))
             construct_v_orders, variation_orders, variations = self.gen_variation()
+            self.__new_vt_order = construct_v_orders
             if mode.startswith("linear-"):
-                self.__update_linear_build(construct_v_orders)
+                self.__update_linear_build(self.__new_vt_order)
             elif mode.startswith("network-"):
                 if mode == "network-local":
-                    self.__update_network_build(construct_v_orders, variation_orders, variations)
+                    self.__update_network_build(self.__new_vt_order, variation_orders, variations)
         else:
             raise ValueError("invalid mode: {}".format(mode))
 
@@ -994,6 +1002,7 @@ class VertexVectorMapper(VMapper):
             # else:  # from_id belongs to (id_1, id_2)
             #     self._id_to_triplets[to_id] = self._id_to_triplets[from_id]
 
+        # TODO reverse the order may help!
         # goes back to the starting points
         # for id_id, to_id in enumerate(construct_v_orders[:min(self.num_vs, len(construct_v_orders) - 1)]):
         supporting_ids = list(supporting_ids)
@@ -1038,7 +1047,7 @@ class VertexVectorMapper(VMapper):
             arg_sort_ids = standard_dev.argsort()
             variation_orders.append(indices_list[arg_sort_ids])
             variations.append(standard_dev[arg_sort_ids])
-            top_k_var_sum.append(sum(variations[-1][:self.num_vs * 10]))  # Apr 21 just fix a bug
+            top_k_var_sum.append(sum(variations[-1][:self.num_vs * 10]))
         top_k_var_sum = np.array(top_k_var_sum)
         construct_v_orders = top_k_var_sum.argsort()
         return construct_v_orders, variation_orders, variations
@@ -1055,5 +1064,10 @@ class VertexVectorMapper(VMapper):
             self.len_vertices - len(across_sample_duplicates),
             self.len_vertices))
         assert len(across_sample_duplicates) == 0, "sample-wide duplicates exist!"
+
+    def get_new_vt_order(self):
+        if not bool(self.__new_vt_order):
+            self.__new_vt_order = self.gen_variation()[0]
+        return list(self.__new_vt_order)
 
 

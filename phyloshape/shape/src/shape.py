@@ -207,6 +207,13 @@ class ShapeAlignment:
         self.faces = Faces()
         # self.network = IdNetwork()
 
+    def __deepcopy__(self, memodict={}):
+        new_shapes = ShapeAlignment()
+        for label, vertices in self:
+            new_shapes.append(label=label, sample=deepcopy(vertices))
+        new_shapes.faces = deepcopy(self.faces)
+        return new_shapes
+
     def __contains__(self, item):
         if isinstance(item, str):
             return item in self._label_to_sample_id

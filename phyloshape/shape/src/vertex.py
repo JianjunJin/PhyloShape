@@ -10,6 +10,7 @@ from phyloshape.utils import COORD_TYPE, RGB_TYPE
 from numpy.typing import ArrayLike
 from typing import Union, List, Tuple
 from loguru import logger
+from copy import deepcopy
 logger = logger.bind(name="phyloshape")
 
 
@@ -22,6 +23,9 @@ class Vertices:
         self.colors = np.array([], dtype=RGB_TYPE) if colors is None else np.array(colors, dtype=RGB_TYPE)
         if len(self.colors):
             assert len(self.coords) == len(self.colors)
+
+    def __deepcopy__(self, memodict={}):
+        return Vertices(deepcopy(self.coords), deepcopy(self.colors))
 
     def __getitem__(self, item: Union[ArrayLike, int, slice, list]):
         if self.colors:

@@ -32,7 +32,8 @@ def gen_unit_perpendicular_v(
     perpendicular_v = np.array([a[1]*b[2]-a[2]*b[1],
                                 a[2]*b[0]-a[0]*b[2],
                                 a[0]*b[1]-a[1]*b[0]])
-    norm = np.linalg.norm(perpendicular_v)
+    # norm = np.linalg.norm(perpendicular_v)
+    norm = (sum(perpendicular_v ** 2)) ** 0.5    # for compatible with sympy for testing
     return perpendicular_v if norm == 0 else perpendicular_v/norm
 
 
@@ -103,7 +104,8 @@ def __find_z_axis_angle(first_edge_vector, cos_x_theta, sin_x_theta, cos_y_theta
     first_edge_vector = x_single_rotate(first_edge_vector, cos_theta=cos_x_theta, sin_theta=sin_x_theta)
     first_edge_vector = y_single_rotate(first_edge_vector, cos_theta=cos_y_theta, sin_theta=sin_y_theta)
     # 1.2.2 the angle to rotate along the z axis
-    norm_xyz = np.linalg.norm(first_edge_vector)
+    # norm_xyz = np.linalg.norm(first_edge_vector)
+    norm_xyz = (sum(first_edge_vector ** 2)) ** 0.5  # for compatible with sympy for testing
     sin_z_theta = -first_edge_vector[1] / norm_xyz
     cos_z_theta = first_edge_vector[0] / norm_xyz
     return cos_z_theta, sin_z_theta
@@ -112,7 +114,9 @@ def __find_z_axis_angle(first_edge_vector, cos_x_theta, sin_x_theta, cos_y_theta
 def __find_rotation_angles(ref_face_points):
     perpendicular_v = gen_unit_perpendicular_v(ref_face_points)
     # 1.1. calculate rotations to transform the perpendicular_v into (0, 0, 1)
-    norm_yz = np.linalg.norm(perpendicular_v[1:])
+    # norm_yz = np.linalg.norm(perpendicular_v[1:])
+    norm_yz = (sum(perpendicular_v[1:] ** 2)) ** 0.5  # for compatible with sympy for testing
+
     # the angle to rotate along the x axis
     sin_x_theta = perpendicular_v[1] / norm_yz if norm_yz else 0.
     cos_x_theta = perpendicular_v[2] / norm_yz if norm_yz else 1.

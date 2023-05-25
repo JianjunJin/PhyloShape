@@ -16,9 +16,10 @@ from __future__ import annotations
 from typing import Tuple, List, Sequence, Optional
 
 import numpy as np
+from scipy.spatial.transform import Rotation as Rot
 from phyloshape.vectors.rotate import get_unit_vector_from_face
 from phyloshape.vectors.transform import (
-    # transform_vector_to_absolute,
+    transform_vector_to_absolute,
     transform_vector_to_relative,
 )
 
@@ -153,6 +154,16 @@ class Vector(_Unique):
             )
         return self._relative
 
+    def to_absolute(self) -> np.ndarray:
+        """...
+        """
+        rot = Rot.from_rotvec(np.pi / 2 * self.absolute)
+        new_abs = transform_vector_to_absolute(
+            rot.apply(self.unit),
+            self.face.coordinates(),
+        )
+        return new_abs
+
 
 if __name__ == "__main__":
 
@@ -173,3 +184,4 @@ if __name__ == "__main__":
     print(V.relative)
     print(v0)
     print(Vertex(id=5, coords=(100.2341, 22.0, 0)))
+    print(V.to_absolute())

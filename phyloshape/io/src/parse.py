@@ -272,7 +272,7 @@ if __name__ == "__main__":
     print(test)
 
     MODEL_FILE = "/home/deren/Documents/PhyloShapeTest/data/Gesneriaceae.Gigascience.2020/12_K039105_04.ply"
-    MODEL_FILE = "/home/deren/Documents/PhyloShapeTest/data/cranolopha_DE183.ply"    
+    MODEL_FILE = "/home/deren/Documents/PhyloShapeTest/data/cranolopha_DE183.ply"
 
     # test = load_shape_from_ply(MODEL_FILE)
     # print(test)

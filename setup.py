@@ -29,6 +29,8 @@ setup(
         "numpy",
         "scipy",
         "symengine",
+        "python-symengine",
+        "k3d",
         "loguru",
         "plyfile",
         "toytree",  # temporarily

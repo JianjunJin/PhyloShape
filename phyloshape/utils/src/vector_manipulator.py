@@ -221,4 +221,17 @@ def trans_vector_to_absolute(
     return absolute_vector
 
 
+if __name__ == "__main__":
 
+    # v = np.array([0.1, 0.2, 0.3], dtype=np.float32)
+    # print(__find_z_axis_angle(v, 10, 20, 30, 40))
+
+    vertex0 = np.array([0.1, 0.2, 0.3], dtype=np.float32)
+    vertex1 = np.array([0.5, 0.5, 0.5], dtype=np.float32)
+    vertex2 = np.array([1.0, 1.0, 1.0], dtype=np.float32)
+    face = [
+        np.array([0.1, 0.2, 0.3], dtype=np.float32),
+        np.array([0.5, 0.5, 0.5], dtype=np.float32),
+        np.array([1.0, 1.0, 1.0], dtype=np.float32),
+    ]
+    print(__find_rotation_angles(face))

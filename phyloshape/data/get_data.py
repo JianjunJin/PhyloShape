@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 
+"""...
+
+"""
 
 from typing import Union, Sequence
 from pathlib import Path

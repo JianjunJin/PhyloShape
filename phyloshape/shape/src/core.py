@@ -154,15 +154,15 @@ class Vector(_Unique):
             )
         return self._relative
 
-    def to_absolute(self) -> np.ndarray:
-        """...
-        """
-        rot = Rot.from_rotvec(np.pi / 2 * self.absolute)
-        new_abs = transform_vector_to_absolute(
-            rot.apply(self.unit),
-            self.face.coordinates(),
-        )
-        return new_abs
+    # def to_absolute(self) -> np.ndarray:
+    #     """...
+    #     """
+    #     rot = Rot.from_rotvec(np.pi / 2 * self.absolute)
+    #     new_abs = transform_vector_to_absolute(
+    #         rot.apply(self.unit),
+    #         self.face.coordinates(),
+    #     )
+    #     return new_abs
 
 
 if __name__ == "__main__":

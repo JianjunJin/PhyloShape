@@ -870,6 +870,7 @@ class VertexVectorMapper(VMapper):
                 self.__update_linear_build(construct_v_orders)
             else:  # mode == "linear-variation":
                 raise ValueError("not implemented mode: {}".format(mode))
+
         elif mode.endswith("-local") or mode.endswith("-variation"):
             # TODO: efficiency can be improved
             # TODO: use the distance to mimic the changes to find the most conserved part to start
@@ -1057,3 +1058,15 @@ class VertexVectorMapper(VMapper):
         assert len(across_sample_duplicates) == 0, "sample-wide duplicates exist!"
 
 
+if __name__ == "__main__":
+
+    # shapes is a ShapeAlignment
+    ali = ShapeAlignment()
+
+    # VertexVectorMapper... need to understand it.
+    v_translator = VertexVectorMapper(
+        [vt.coords for lb, vt in ali.shapes],
+        mode="linear-variation",
+        num_vs=10,
+        num_vt_iter=5,
+    )

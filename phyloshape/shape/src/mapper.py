@@ -7,26 +7,45 @@ all models, representing a traversal over all vertices. Each vector
 is defined by homologous Vertex IDs in each model. Each Vertex is
 also associated with a number of neighbor edges, which are used to
 constrain its change...
+
+0. Clean Vertex data given N input Vertex datasets (Models).
+1. Convert Vertices -> Vectors
+2. Find most stable path to visit Vertices.
+3. Infer PCs from Vectors for tip Nodes.
+4. Reconstruct ancestral PCs under an Evolutionary Model (e.g., BM).
+5. Convert PCs back into Vectors for ancestral Nodes using path vectors.
+6. Convert Vectors back into Vertices for ancestral Nodes.
 """
 
-from typing import List, Optional, Mapping, Dict
+from typing import List, Optional, Mapping, Dict, Tuple, Sequence, Optional
 import itertools
 from loguru import logger
 import k3d
 import numpy as np
+from toytree import ToyTree
 from sklearn.decomposition import PCA
 from phyloshape.shape.src.model import Model
-from phyloshape.shape.src.core import Vector, Face
+from phyloshape.shape.src.core import Vector, Face, Vertex
 
 MIN_DIST = 1e-9
 logger = logger.bind(name="phyloshape")
 
 
 class VectorMapper:
-    """...
+    """Converts from Vertices -> Vectors -> PCs and back.
 
-    Note the 10th vertex in verts does not necessarily correspond to
-    Model.vertex[10] b/c some vertices may be dropped.
+    A shape is represented by an array of Vertex coordinates. This func
+    takes a dict containing multiple Model objects with homologous
+    landmarks. These data are analyzed in the following way:
+        1. Clean models to remove duplicate (uninformative) vertices.
+        2. Create Vectors for each Model between all pairs of Vertices.
+        3. Find the order of Vertices with the most stable vectors
+        across all models. This is the vertex_ids path.
+        4. Set a reference face to each Vector composed of previous
+        vertices in the path, creating a 'relative' orientation for
+        each vectors that will allow us to project into a new coordinate
+        space.
+        5. ...
     """
     def __init__(
         self,
@@ -34,96 +53,77 @@ class VectorMapper:
         random_seed: Optional[int] = None,
         num_neighbors: Optional[int] = 10,
         num_iterations: int = 5,
-        # local_path: bool = True,
-        # linear_path: bool = True,
     ):
 
         self.models = models
         self.labels = sorted(models)
-        self.rng = np.random.default_rng(random_seed)
 
         # counters here are updated if any duplicates are excluded.
         self.num_vertices = len(self.models[self.labels[0]].vertices)
         self.num_models = len(models)
-        self.num_iterations = num_iterations
+        self.num_iterations = max(1, num_iterations)
         self.num_neighbors = min(
             self.num_vertices - 1 if None else num_neighbors,
             self.num_vertices - 1)
-        # self.linear_path = linear_path
-        # self.local_path = local_path
+
+        # log init of VectorMapper
+        logger.info(
+            f"VectorMapper num_models={self.num_models} "
+            f"num_vertices={self.num_vertices}")
 
         # Values filled by ._set functions
         self.vertex_ids = np.arange(self.num_vertices)
         """: Order of Vertex traversal. Updated in _set funcs."""
-        self.vectors: Dict[str, Dict[int, List[Vector]]] = {}
-        """: {model_index: {vertex_index: Vector}}"""
-        self.vector_weights: Dict[str, Dict[int, np.ndarray]] = {}
-        """: {model_index: {vertex_index: Vector}}"""
-        # self.verts: np.ndarray = None
-        # """: all vertices (num_models, num_vertices, 3)"""
+        self.vectors: Dict[str, Dict[Tuple[int, int], Vector]] = {}
+        """: Vector objects with (Vertex, Vertex) info in each model"""
+        self.vector_weights: Dict[Tuple[int, int], float] = {}
+        """: Phylo and variance weighted stability of vectors."""
+        self._neighbors: Dict[int, np.ndarray] = {}
+        # """: store N most stable neighbors of a vertex. Not used currently."""
 
-        # set all vertices into one large array
-        # self._set_vertices()
-        # set vectors excluding any duplicate landmarks
-        self._set_init_vectors()
-        # set vector faces and order as sorted list by dist variation
-        self._set_ordered_vectors()
+        # remove duplicate vertices (updates .vertex_ids and .num_[...])
+        self._remove_duplicates()
 
-    # def _set_vertices(self):
-    #     """Fill the .verts array with Vertex data from all Models.
+        # set .vectors between all vertices for all models
+        self._set_vectors()
 
-    #     This array can be indexed by [model, vertex_id]. Beware that
-    #     some vertex_ids may be excluded from the analysis if they are
-    #     identical, but they will not be dropped from this array, such
-    #     that the axis=1 index will always match the vertex_id. Use the
-    #     list self.vertex_ids to iterate over non-excluded vertex ids.
-    #     """
-    #     self.verts = np.zeros(
-    #         shape=(self.num_models, self.num_vertices, 3),
-    #         dtype=np.float32,
-    #     )
-    #     for midx, label in enumerate(self.labels):
-    #         model = self.models[label]
-    #         for vidx, vertex in enumerate(model.vertices):
-    #             self.verts[midx, vidx, :] = vertex.coords
+        # set .vertex_ids vertex ordered by dist-variance
+        self._set_vertex_path()
 
-    def _set_init_vectors(self) -> None:
-        """Store initial vectors and record duplicate vertices
+        # set .faces on each vector in .vectors based on ordered v path
+        self._set_vector_faces()
 
-        The initial vectors for each model are one-directional from
-        lower vertex_idx to higher vertex_id, including between
-        vertices that are marked for exclusion as duplicates.
+    def _get_duplicate_vertex_pairs(self) -> List[int]:
+        """Return List of vertex pairs with zero dist across all models.
         """
-        # for each model a dict mapping {vertex_i: {vertex_j: Vector(i,j)}
-        for label in self.labels:
-            self.vectors[label] = {i: {} for i in range(self.num_vertices)}
+        # initially compare all pairs of verts
+        pairs = itertools.combinations(range(self.num_vertices), 2)
 
-        # to store vertex ID pairs with 0 dist to identify duplicates
-        duplicates = []
+        # iterate over models
+        for midx, label in enumerate(self.labels):
+            model = self.models[label]
 
-        # iterate over all pairs of vertex IDs
-        for i, j in itertools.combinations(range(self.num_vertices), 2):
+            # store tuples of duplicate vertex IDs
+            duplicates = []
 
-            # to fill with paired vertex distances
-            identical = np.zeros(self.num_models, dtype=np.bool_)
-
-            # get pairwise distance between all vertices
-            for midx, label in enumerate(self.labels):
-                model = self.models[label]
-                v0 = Vector(model.vertices[i], model.vertices[j])
-                v1 = Vector(model.vertices[j], model.vertices[i])
-                self.vectors[label][i][j] = v0
-                self.vectors[label][j][i] = v1
-
+            # compare verts appeared as dups in all previous models
+            for i, j in pairs:
+                vec = Vector(model.vertices[i], model.vertices[j])
                 # store if dist is near 0
-                if v0.dist < MIN_DIST:
-                    identical[midx] = True
+                if vec.dist < MIN_DIST:
+                    duplicates.append((i, j))
 
-            # store vertex as duplicate if identical in all models
-            if all(identical):
-                duplicates.append((i, j))
+            # set pairs to only test further the pairs in dups
+            pairs = duplicates
+        return duplicates
 
-        # keep just one at each vertex given >=2 stacked vertices
+    def _remove_duplicates(self) -> None:
+        """...
+        """
+        duplicates = self._get_duplicate_vertex_pairs()
+
+        # keep just one at each vertex pair given >=2 stacked vertices
+        # e.g., (0, 1), (0, 2), (1, 2). Remove 0 and 1, keep 2.
         remove = set()
         keep = set()
         for i, j in duplicates:
@@ -146,184 +146,214 @@ class VectorMapper:
         self.num_vertices = self.vertex_ids.shape[0]
         self.num_neighbors = min(self.num_neighbors, self.num_vertices - 1)
 
-        # remove vectors starting or ending in excluded vertices
-        for label in self.labels:
-            # remove item: [ridx: {Vector, Vector, Vector}]
-            for ridx in remove:
-                self.vectors[label].pop(ridx)
-            # remove Vectors ending in rm IDs: [vidx: {Vector, x, Vector, ...}]
-            for vidx in self.vertex_ids:
-                self.vectors[label][vidx] = {
-                    i: j for (i, j) in self.vectors[label][vidx].items()
-                    if j.end.id not in remove
-                }
-
-        # finally, add a vector to itself for every sample and assert len
-        for vidx in self.vertex_ids:
-            for label in self.labels:
-                model = self.models[label]
-                self.vectors[label][vidx][vidx] = Vector(
-                    model.vertices[vidx], model.vertices[vidx]
-                )
-                assert len(self.vectors[label][vidx]) == len(self.vertex_ids)
-
-        # log report discarded vertices
+        # logger report discarded vertices
         if remove:
-            remove = sorted(remove)
-            logger.warning(
-                f"{len(remove)} identical vertices will be excluded: {remove}")
+            rm_s = sorted(remove)
+            rm_n = len(rm_s)
+            logger.warning(f"{rm_n} identical vertices will be excluded: {rm_s}")
 
-    def _set_ordered_vectors(self) -> None:
-        """Set .vectors for each model to a sorted list instead of set.
-
-        Each vector set will be [optionally] subset to only vectors to
-        the num_neighbors with most stable distances to the vertex,
-        sorted from lowest to hightest distance variation.
+    def _set_vectors(self, labels: Optional[Sequence[str]] = None) -> None:
+        """Set Vector objects between all Vertices in one or more models.
         """
-        # store summed variation in neighbor distances among vertices
+        labels = self.labels if labels is None else labels
+
+        # set Vectors between pairs of (v0, v1) for each model.
+        for label in labels:
+            self.vectors[label] = {}
+            model = self.models[label]
+            for vidx, nidx in itertools.combinations(self.vertex_ids, 2):
+                v0 = model.vertices[vidx]
+                v1 = model.vertices[nidx]
+                self.vectors[label][(vidx, nidx)] = Vector(v0, v1)
+                self.vectors[label][(nidx, vidx)] = Vector(v1, v0)
+                self.vectors[label][(vidx, vidx)] = Vector(v0, v0)
+            self.vectors[label][(nidx, nidx)] = Vector(v1, v1)
+
+    def _set_vertex_path(self) -> None:
+        """Find optimal path to visit Vertices and store to .vertex_ids.
+
+        Also sets initial vector weights.
+        """
+        logger.debug("finding optimal stable path visiting all Vertices")
+
+        # dict to store {vertex_id: std of its vector dists}
         sum_var_ndists = {}
 
-        # iterate over vertex ids
-        # NOTE: not range(self.num_vertices) b/c some verts may been dropped
-        # for vidx, nidx in itertools.permutations(self.vertex_ids, 2):
-        # logger.info(f"vertex_ids = {self.vertex_ids}")
-        for vertex_id in self.vertex_ids:
+        # iterate over all vertices
+        for vidx, vertex_id in enumerate(self.vertex_ids):
 
-            # iterate over models getting ordered (vidx, nidx) dists
-            dists = np.zeros((self.num_models, len(self.vertex_ids)))
+            # fill array of dists from vertex to all others across models
+            dists = np.zeros((self.num_models, self.num_vertices))
             for lidx, label in enumerate(self.labels):
-                vectors = self.vectors[label][vertex_id]
-                dists[lidx] = [vectors[i].dist for i in self.vertex_ids]
-
-                # create empty weights to be filled {str: {int: ndarray}}
-                if label not in self.vector_weights:
-                    self.vector_weights[label] = {vertex_id: None}
+                dists[lidx] = [
+                    self.vectors[label][(vertex_id, neighbor_id)].dist
+                    for neighbor_id in self.vertex_ids
+                ]
 
             # get variation in dist vidx -> all other vertex_ids across models
             vstds = np.std(dists, axis=0)
 
-            # store how variable this vertex is to ALL neighbors
-            sum_var_ndists[vertex_id] = sum(vstds)
+            # store how variable this vertex pair is
+            sum_var_ndists[vertex_id] = vstds.sum()
 
-            # get order of vstds ordered by distance variance from vidx
-            neighbor_stability_order = np.argsort(vstds)
+            # temporarily store stds, trimmed and normalized below.
+            self.vector_weights[vertex_id] = vstds
 
-            # sort vectors for each vertex the same way for each model:
-            # by their variance in distances from vidx
-            for label in self.labels:
-                model = self.models[label]
-
-                # sort vectors into list: [Vertex, Vertex, Vertex, ...]
-                self.vectors[label][vertex_id] = [
-                    self.vectors[label][vertex_id][i]
-                    for i in self.vertex_ids[neighbor_stability_order]
-                ][1:]
-
-                # ...
-                self.vector_weights[label][vertex_id] = (
-                    1 / vstds[neighbor_stability_order][1:]
-                )
-
-                # slice list to first N neighbors
-                slx = slice(0, self.num_neighbors)
-                if self.num_neighbors < self.num_vertices - 1:
-                    self.vectors[label][vertex_id] = (
-                        self.vectors[label][vertex_id][slx])
-                    self.vector_weights[label][vertex_id] = (
-                        self.vector_weights[label][vertex_id][slx])
-
-                # convert vector stds to weights: [0.08, 0.01, 0.001, ...]
-                self.vector_weights[label][vertex_id] /= (
-                    self.vector_weights[label][vertex_id].sum())
-
-                # store reference face as (start v, other v, other v). To choose
-                # other 2 vertices we pick the 2 least variable neighbors that
-                # that are not the target vector, but also excluding any vertex
-                # that is within MIN_DIST from the start vertex. This is b/c
-                # the reference face must have >0 area to have an orientation.
-                top3 = [
-                    i for i in self.vectors[label][vertex_id]
-                    if i.dist > MIN_DIST
-                ][:3]
-                for vector in self.vectors[label][vertex_id]:
-                    top2 = [
-                        i.end.id for i in top3 if i.end.id != vector.end.id
-                    ]
-
-                    # could store the Face to the model object...
-                    vector._face = Face((
-                        model.vertices[vertex_id],
-                        model.vertices[top2[0]],
-                        model.vertices[top2[1]],
-                    ))
+        # store translator of old vertex order given duplicates removed
+        dtrans = dict(zip(self.vertex_ids.copy(), range(len(self.vertex_ids))))
 
         # get best vertex visit order that visits each vertex in the
         # order from least variable to neighbors to most variable.
         self.vertex_ids = sorted(sum_var_ndists, key=lambda x: sum_var_ndists[x])
-        logger.info(f"best vertex path: {self.vertex_ids[:5]}, ... {self.vertex_ids[-5:]}")
+        logger.info(f"vertex path: {self.vertex_ids[:5]}, ... {self.vertex_ids[-5:]}")
 
-    def get_vectors_relative(self, label: str, vertex_id: int) -> np.ndarray:
-        """Return array of vectors sorted from N most stable neighbors"""
-        return np.vstack([i.relative for i in self.vectors[label][vertex_id]])
+        # sort vertex_weights by new order and only store from 0-vidx
+        for vidx, vertex_id in enumerate(self.vertex_ids):
+            # get the variation in vertices ordered 0, 1, 2...
+            vstds = self.vector_weights[vertex_id]
 
-    def get_vectors_absolute(self, label: str, vertex_id: int) -> np.ndarray:
-        """Return array of vectors sorted from N most stable neighbors"""
-        return np.vstack([i.absolute for i in self.vectors[label][vertex_id]])
+            # reorder w/ new vertex order while accounting for dups rm
+            odx = [dtrans[i] for i in self.vertex_ids]
+            vstds = vstds[odx]
 
-    def get_vectors_unit(self, label: str, vertex_id: int) -> np.ndarray:
-        """Return array of vectors sorted from N most stable neighbors"""
-        return np.vstack([i.unit for i in self.vectors[label][vertex_id]])
+            # trim to only 0-vidx
+            vstds = vstds[:vidx]
 
-    def get_vector_ids(self, label: str, vertex_id: int) -> np.ndarray:
-        """Return array of vectors sorted from N most stable neighbors"""
-        return np.vstack([(i.start.id, i.end.id) for i in self.vectors[label][vertex_id]])
+            # convert to weights
+            if not vidx:
+                self.vector_weights[vertex_id] = []
+            else:
+                assert 0. not in vstds, "dups cannot exist here."
+                weights = 1 / vstds
+                self.vector_weights[vertex_id] = weights / weights.sum()
 
-    def get_vector_weights(self, label: str, vertex_id: int) -> np.ndarray:
-        """Return array of vectors sorted from N most stable neighbors"""
-        return self.vector_weights[label][vertex_id]
+    def _set_vector_faces(self, labels: Optional[Sequence[str]] = None) -> None:
+        """Set .face on each Vector in each Model.
 
-    def get_vector_faces(self, label: str, vertex_id: int) -> np.ndarray:
-        return np.vstack([i.face for i in self.vectors[label][vertex_id]])
-
-    def get_vector_face_coordinates(self, label: str, vertex_id: int) -> np.ndarray:
-        return np.array([np.array([j.coords for j in i.face]) for i in self.vectors[label][vertex_id]])
-
-    def get_vector_vertex_start_coords(self, label: str, vertex_id: int) -> np.ndarray:
         """
+        logger.debug("setting reference faces to all Vectors along path")
 
-        Parameters
-        ----------
-        label: str
-            ...
-        vertex_id: int
-            ...
+        # get one or more models to update faces on
+        labels = self.labels if labels is None else labels
+
+        # iterate over models setting faces in path order
+        for label in labels:
+            model = self.models[label]
+            for pair, vector in self.vectors[label].items():
+                # get index of vector start ID
+                vstart_idx = self.vertex_ids.index(pair[0])
+                vend_idx = self.vertex_ids.index(pair[1])
+
+                # get last three ordered vertex IDs to form a face
+                if vstart_idx > 2 | vend_idx > 2:
+                    trio = [
+                        self.vertex_ids[i] for i in
+                        (vstart_idx, vstart_idx - 1, vstart_idx - 2)
+                    ]
+
+                # or if one of first two vectors then use first three as face
+                else:
+                    trio = self.vertex_ids[:3]
+
+                # set Model vertices to the face
+                vector._face = Face(tuple(model.vertices[i] for i in trio))
+                # logger.info([vector, vector.face])
+
+    def _get_phylo_vector_weights(self, tree: ToyTree, label: str) -> np.ndarray:
+        """Return vector weights for a tip or ancestral sample.
         """
-        vidxs = self.get_vector_ids(label, vertex_id)
-        model = self.models[label]
-        coords = np.zeros((vidxs.shape[0], 3))
-        for vidx, vertex_id in enumerate(vidxs[:, 0]):
-            coords[vidx, :] = model.vertices[vertex_id].coords
-        return coords
+        # ...
 
-    def get_vector_vertex_end_coords(self, label: str, vertex_id: int) -> np.ndarray:
+    def get_model_from_vectors(
+        self,
+        label: str,
+        vectors: Mapping[Tuple[int, int], Vector],
+        weighted: bool = True,
+    ) -> Model:
+        """Return an array of vertex coords inferred from weighted vectors.
+
+        Vertex coordinates are generated in a new R3 space by inferring
+        the position of each vertex one at a time in the order previously
+        inferred to be the most stable across models. At each subsequent
+        Vertex its position is inferred relative to the already placed
+        Vertices relative to their reference face.
         """
+        logger.debug("inferring Vertex coords from mean path accumulated relative Vectors")
 
-        Parameters
-        ----------
-        label: str
-            ...
-        vertex_id: int
-            ...
+        # TODO: get updated weights given the phylo position of this model
+        # weights = self._get_vector_weights(tree, label)
+
+        # build an empty vertex coords array to fill
+        vcoords = np.zeros(shape=(self.num_vertices, 3))
+
+        # iterate to refine model coordinates
+        for rep in range(self.num_iterations):
+            # track difference from previous iteration
+            diff = 0.
+
+            # iterate over vertices to serve as vector endpoints
+            for idx, vec_end in enumerate(self.vertex_ids):
+
+                # iterate over a subset of vertices to serve as vector
+                # start points, using only those that already have
+                # inferred positions in the new coordinate space.
+                subset = self.vertex_ids[:idx]
+
+                # get coordinates from accumulated relative vectors so far
+                arr = np.zeros((idx, 3))
+                for aidx, vec_start in enumerate(subset):
+                    pair = (vec_start, vec_end)
+                    arr[aidx, :] = vcoords[aidx] + vectors[pair].relative
+
+                # get mean weighted coordinate
+                if idx:
+                    if weighted:
+                        weights = self.vector_weights[vec_end]
+                        new_pos = np.average(arr, axis=0, weights=weights)
+                    else:
+                        new_pos = arr.mean(axis=0)
+                    diff += np.linalg.norm(vcoords[idx] - new_pos)
+                    vcoords[idx] = new_pos
+
+            # log improvement
+            logger.info(f"refining iteration {rep}; sum diff = {diff:.5g}")
+
+            # add reconstructed model to .models and get its vectors
+            new_label = f"{label}-x"
+            self.add_model(label=new_label, coords=vcoords)
+            vectors = self.vectors[new_label]
+        return self.models[new_label]
+
+    def add_model(self, label: str, coords: np.ndarray) -> None:
+        """Create a new Model from Vertex coordinates and add to .models
         """
-        vidxs = self.get_vector_ids(label, vertex_id)
-        model = self.models[label]
-        coords = np.zeros((vidxs.shape[0], 3))
-        for vidx, vertex_id in enumerate(vidxs[:, 1]):
-            coords[vidx, :] = model.vertices[vertex_id].coords
-        return coords
+        vertices = []
 
-    def get_PCs(self):
-        """...
+        # copy vertex ids from the first model
+        flabel = self.labels[0]
+        for vertex in self.models[flabel].vertices:
+            if vertex.id in self.vertex_ids:
+                # get its index in the vertex_ids list
+                vidx = self.vertex_ids.index(vertex.id)
+                # create a new Vertex with updated coords
+                vertices.append(Vertex(id=vertex.id, coords=coords[vidx]))
+            else:
+                # placeholder for removed duplicate vertices
+                vertices.append(Vertex(id=-9, coords=(0, 0, 0)))
+
+        # store a new Model with the new set of Vertices
+        self.models[label] = Model(vertices, faces=[])
+
+        # set its Vectors and faces
+        self._set_vectors(labels=[label])
+        self._set_vector_faces(labels=[label])
+
+    ###################################################################
+    # ...
+    ###################################################################
+
+    def get_PCs(self) -> np.ndarray:
+        """
 
         IDEA: visualize vector co-variances
             1. get relative vector covariances from PCA
@@ -384,5 +414,8 @@ if __name__ == "__main__":
 
     models = phyloshape.data.get_gesneriaceae_models()
     vm = VectorMapper(models, num_neighbors=10)
-    vm.get_PCs()
+    vectors = vm.vectors["34_HC3403-3_17"]
+    vm.get_model_from_vectors("test", vectors)
+
+    # vm.get_PCs()
     # print(vm.get_vector_face_coordinates("34_HC3403-3_17", 3))

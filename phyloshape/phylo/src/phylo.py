@@ -16,7 +16,7 @@ from symengine import log as s_log
 from toytree.io.src.treeio import tree
 
 from phyloshape.shape.src.vectors import VertexVectorMapper
-from phyloshape.shape.src.shape_alignment import ShapeAlignment
+from phyloshape.shape.src.shape import ShapeAlignment
 from phyloshape.shape.src.vertex import Vertices
 from phyloshape.phylo.src.models import *
 

@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
-"""
-The core subpackage contains modules for manipulating and visualizing Shape objects.
+"""The core module for creating, manipulating and visualizing Shape objects.
 
 Examples
 --------

@@ -184,4 +184,4 @@ if __name__ == "__main__":
     print(V.relative)
     print(v0)
     print(Vertex(id=5, coords=(100.2341, 22.0, 0)))
-    print(V.to_absolute())
+    # print(V._absolute)

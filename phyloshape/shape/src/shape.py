@@ -150,7 +150,7 @@ class Shape:
         self,
         from_external_file: Optional[str] = None,
         from_external_image: Optional[str] = None,
-        ):
+    ):
         """Parse an OBJ file to fill the Shape object data.
 
         OBJ files contain tabular data formatted into different

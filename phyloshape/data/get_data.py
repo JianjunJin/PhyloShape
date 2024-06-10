@@ -1,21 +1,24 @@
 #!/usr/bin/env python
 
-"""...
+"""Return an example dataset used for the tutorial and testing.
 
 """
 
-from typing import Union, Sequence
+from typing import Union, Sequence, Dict
 from pathlib import Path
 import numpy as np
 import phyloshape
 
 
-def get_gesneriaceae_models(models: Union[int, Sequence[int]] = 5):
-    # path to directory with landmark CSVs
+def get_gesneriaceae_models(models: Union[int, Sequence[int]] = 5) -> Dict[str, 'Model']:
+    """Return 
+
+    """
+    # get a list of Paths to (currently local) directory with landmark CSVs
     GIGA_DIR = Path("/home/deren/Documents/PhyloShapeTest/data/Gesneriaceae.Gigascience.2020/")
     CSVS = list(GIGA_DIR.glob("[0-9]*.csv"))
 
-    # subselect models
+    # optionally subselect models by index
     if isinstance(models, int):
         models = range(0, models)
     CSVS = [CSVS[i] for i in models]
@@ -42,5 +45,4 @@ def get_gesneriaceae_models(models: Union[int, Sequence[int]] = 5):
 
 
 if __name__ == "__main__":
-
     print(get_gesneriaceae_models([0, 5, 10, 15, 20]))

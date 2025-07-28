@@ -15,6 +15,7 @@ from phyloshape.shape.src.vertex import Vertices
 from phyloshape.shape.src.network import IdNetwork
 from phyloshape.utils import PSIOError, find_image_file, ID_TYPE, COORD_TYPE, RGB_TYPE
 from phyloshape.utils.src.vertices_manipulator import find_duplicates_in_vertices_list
+from phyloshape.utils.src.color_manipulator import rgb_to_hex
 logger = logger.bind(name="phyloshape")
 
 
@@ -211,6 +212,21 @@ class Shape:
         # TODO: check other new_shape.faces.texture_* attributes
         #  may or may not in need of updating after extraction
         return new_shape
+
+    def get_k3d_mesh(self, k3d_mesh_func):
+        """
+        Parameters
+        ----------
+        k3d_mesh_func
+
+        Returns
+        -------
+
+        """
+        return k3d_mesh_func(
+            self.vertices.coords,
+            indices=self.faces.vertex_ids,
+            colors=rgb_to_hex(self.vertices.colors))
 
 
 class ShapeAlignment:

@@ -4,31 +4,31 @@
 
 """
 import numpy as np
-from numpy.typing import ArrayLike
-from typing import List
+from numpy.typing import ArrayLike, NDArray
+from typing import List, Tuple
 from loguru import logger
 logger = logger.bind(name="phyloshape")
 
 
-#TODO how to indicate the elements should be [np.float32, np.float32, np.float32]?
 def gen_unit_perpendicular_v(
-        three_points: List[ArrayLike])\
-        -> ArrayLike:
+        three_points: List[NDArray[np.float32]])\
+        -> NDArray[np.float32]:
     """
     Find the unit perpendicular vector of a plane defined by three coordinate triplets.
 
     Parameters
     ----------
-    three_points: List[ArrayLike]
-        Three elements of coordinate triplets, each is an arrays of np.float32 (x, y, z)
+    three_points: List[NDArray[np.float32]]
+        Three elements of coordinate triplets, each is an array of np.float32 (x, y, z)
 
     Returns
     -------
-    ArrayLike[np.float32, np.float32, np.float32]
+    NDArray[np.float32]
         Array of np.float32 (x, y, z) coordinate triplet
     """
     a = three_points[0] - three_points[1]
     b = three_points[0] - three_points[2]
+    # np.across
     perpendicular_v = np.array([a[1]*b[2]-a[2]*b[1],
                                 a[2]*b[0]-a[0]*b[2],
                                 a[0]*b[1]-a[1]*b[0]])
@@ -130,11 +130,10 @@ def __find_rotation_angles(ref_face_points):
     return cos_x_theta, sin_x_theta, cos_y_theta, sin_y_theta, cos_z_theta, sin_z_theta
 
 
-# TODO how to indicate the elements should be [np.float32, np.float32, np.float32]?
 def trans_vector_to_relative(
-        absolute_vector: ArrayLike,
-        ref_face_points: List[ArrayLike])\
-        -> ArrayLike:
+        absolute_vector: NDArray[np.float32],
+        ref_face_points: List[NDArray[np.float32]])\
+        -> NDArray[np.float32]:
     """
     This function transforms a relative_vector from its original coordination to a new coordination,
     where the input reference face (t1, t2, t3) is on the xy plane (its perpendicular vector on the positive z axis),
@@ -142,14 +141,14 @@ def trans_vector_to_relative(
 
     Parameters
     ----------
-    absolute_vector: ArrayLike[np.float32]
+    absolute_vector: NDArray[np.float32]
         Array of triangle vertices: float (x, y, z) coordinate triplets.
-    ref_face_points: List[ArrayLike[np.float32]]
-        List of three coordinate triplets (t1, t2, t3), each is an arrays of np.float32 (x, y, z)
+    ref_face_points: List[NDArray[np.float32]]
+        List of three coordinate triplets (t1, t2, t3), each is an array of np.float32 (x, y, z)
 
     Returns
     -------
-    ArrayLike[np.float32]
+    NDArray[np.float32]
         Array of triangle vertices: float (x, y, z) coordinate triplets.
     """
     cos_x_theta, sin_x_theta, cos_y_theta, sin_y_theta, cos_z_theta, sin_z_theta = \
@@ -178,24 +177,23 @@ def trans_vector_to_relative(
     return relative_vector
 
 
-# TODO how to indicate the elements should be [np.float32, np.float32, np.float32]?
 def trans_vector_to_absolute(
-        relative_vector: ArrayLike,
-        ref_face_points: List[ArrayLike])\
-        -> ArrayLike:
+        relative_vector: NDArray[np.float32],
+        ref_face_points: List[NDArray[np.float32]])\
+        -> NDArray[np.float32]:
     """
     This function is the reverse function of get_relative_vector_to_face.
 
     Parameters
     ----------
-    relative_vector: ArrayLike[np.float32]
+    relative_vector: NDArray[np.float32]
         Array of triangle vertices: float (x, y, z) coordinate triplets.
-    ref_face_points: List[ArrayLike[np.float32]]
-        List of three coordinate triplets, each is an arrays of np.float32 (x, y, z)
+    ref_face_points: List[NDArray[np.float32]]
+        List of three coordinate triplets, each is an array of np.float32 (x, y, z)
 
     Returns
     -------
-    ArrayLike[np.float32]
+    NDArray[np.float32]
         Array of triangle vertices: float (x, y, z) coordinate triplets.
     """
     cos_x_theta, sin_x_theta, cos_y_theta, sin_y_theta, cos_z_theta, sin_z_theta = \

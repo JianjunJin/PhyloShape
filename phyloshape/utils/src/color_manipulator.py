@@ -1,11 +1,23 @@
 #!/usr/bin/env python
 
 import numpy as np
-from numpy.typing import ArrayLike
+from numpy.typing import ArrayLike, NDArray
 
 
-def rgb_to_hex(rgb_array: ArrayLike):
-    """convert (2^8, 2^8, 2^8)-based rgb array to hex array"""
+def rgb_to_hex(rgb_array: NDArray[np.uint8]) -> NDArray[np.uint32]:
+    """
+    Convert (2^8, 2^8, 2^8)-based rgb array to hex array.
+    
+    Parameters
+    ----------
+    rgb_array : NDArray[np.uint8]
+        Array of RGB values, with shape (..., 3)
+        
+    Returns
+    -------
+    NDArray[np.uint32]
+        Array of hexadecimal color values
+    """
     if rgb_array.shape[-1] != 3:
         raise ValueError("Last dimension of input array must be 3; "
                          "shape {} was found.".format(rgb_array.shape))
@@ -14,18 +26,20 @@ def rgb_to_hex(rgb_array: ArrayLike):
 
 
 # converted from: https://github.com/matplotlib/matplotlib/blob/v3.5.2/lib/matplotlib/colors.py
-def rgb_to_hsv(rgb_array: ArrayLike):
+def rgb_to_hsv(rgb_array: NDArray[np.uint8]) -> NDArray[np.float32]:
     """
     Convert (2^8, 2^8, 2^8)-based rgb array to hsv array.
 
     Parameters
     ----------
-    rgb_array : (..., 3) array-like
-       All values must be in the range [0, 1]
+    rgb_array : NDArray[np.uint8]
+       Array of RGB values, with shape (..., 3)
+       Values should be in the range [0, 255]
+    
     Returns
     -------
-    (..., 3) ndarray
-       Colors converted to hsv values in range [0, 1]
+    NDArray[np.float32]
+       Colors converted to HSV values in range [0, 1]
     """
     rgb_array = np.array(rgb_array, dtype=np.float32) / 255.0
 

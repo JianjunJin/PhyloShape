@@ -12,8 +12,8 @@ from IPython.display import display
 def visualize_3d_over_tree(
         tree,  # toytree generated tree object
         object_list,  # list of k3d.mesh objects or None, length must match tree node count
-        canvas_shape,  # (c_width, c_height) tuple for canvas dimensions
-        object_shape,  # (o_width, o_height) tuple for mini-plot dimensions
+        canvas_size,  # (c_width, c_height) tuple for canvas dimensions
+        object_size,  # (o_width, o_height) tuple for mini-plot dimensions
         tree_draw_params=None,  # additional parameters for tree.draw (excluding width/height)
         obj_camera=None,  # k3d camera configuration, None for auto-fit
         obj_x_offset=0.,  # TODO: add a toggle to do this
@@ -29,8 +29,8 @@ def visualize_3d_over_tree(
         object_list: list - List of k3d objects (e.g., k3d.mesh) or None.
                      Must have the same length as the number of nodes in the tree.
                      None entries skip creating a plot for that node.
-        canvas_shape: tuple - (width, height) of the main canvas in pixels
-        object_shape: tuple - (width, height) of each mini 3D plot in pixels
+        canvas_size: tuple - (width, height) of the main canvas in pixels
+        object_size: tuple - (width, height) of each mini 3D plot in pixels
         tree_draw_params: dict - Additional parameters to pass to tree.draw()
         obj_camera: list - k3d camera configuration [x, y, z, target_x, target_y, target_z, up_x, up_y, up_z]
                      None enables auto-fit camera
@@ -45,8 +45,8 @@ def visualize_3d_over_tree(
     assert len(object_list) == num_nodes, \
         f"object_list length ({len(object_list)}) must match number of tree nodes ({num_nodes})"
 
-    c_width, c_height = canvas_shape
-    o_width, o_height = object_shape
+    c_width, c_height = canvas_size
+    o_width, o_height = object_size
     tree_draw_params = tree_draw_params or {}
 
     # generate tree and draw with provided parameters
@@ -230,8 +230,8 @@ def test_visualize_3d_over_tree():
     viz_layout = visualize_3d_over_tree(
         tree=tree,
         object_list=object_list,
-        canvas_shape=(500, 400),
-        object_shape=(40, 40),
+        canvas_size=(500, 400),
+        object_size=(40, 40),
         # tree_draw_params={"tip_labels": False},
         # tree_draw_params={"tip_labels_align": True},
         obj_camera=[0, 0, 30, 0, 0, 0, 0, 1, 0],

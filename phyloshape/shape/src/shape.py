@@ -8,11 +8,12 @@ from plyfile import PlyData, PlyElement
 from PIL import Image
 import numpy as np
 from copy import deepcopy
-from typing import Union
+from typing import Union, List, Tuple
 from phyloshape.shape.src.face import Faces
 from phyloshape.shape.src.vertex import Vertices
 from phyloshape.shape.src.network import IdNetwork
 from phyloshape.utils import PSIOError, find_image_file, ID_TYPE, COORD_TYPE, RGB_TYPE
+from phyloshape.utils.src.vertices_manipulator import find_duplicates_in_vertices_list
 logger = logger.bind(name="phyloshape")
 
 
@@ -206,6 +207,13 @@ class ShapeAlignment:
         self.faces = Faces()
         # self.network = IdNetwork()
 
+    def __deepcopy__(self, memodict={}):
+        new_shapes = ShapeAlignment()
+        for label, vertices in self:
+            new_shapes.append(label=label, sample=deepcopy(vertices))
+        new_shapes.faces = deepcopy(self.faces)
+        return new_shapes
+
     def __contains__(self, item):
         if isinstance(item, str):
             return item in self._label_to_sample_id
@@ -288,6 +296,13 @@ class ShapeAlignment:
         if del_names:
             logger.warning("label(s) " + ",".join(sorted(del_names)) + " not found!\n")
 
+    def del_vertices(self, item: Union[List, Tuple, int, slice]):
+        if isinstance(item, (list, tuple, slice, int)):
+            for vertices in self._vertices_list:
+                del vertices[item]
+        else:
+            raise TypeError(type(item))
+
     def n_faces(self):
         return len(self.faces.vertex_ids)
 
@@ -296,6 +311,26 @@ class ShapeAlignment:
 
     def n_samples(self):
         return len(self._vertices_list)
+
+    def find_duplicate(self):
+        across_sample_duplicates = find_duplicates_in_vertices_list([vts.coords for vts in self._vertices_list])
+        logger.info("{} ouf of {} sample-wide unique points".format(
+            self.__n_vertices - len(across_sample_duplicates),
+            self.__n_vertices))
+        return tuple(sorted(across_sample_duplicates))
+
+    def deduplicate(self):
+        if not self.faces:
+            across_sample_duplicates = self.find_duplicate()
+            self.del_vertices(list(across_sample_duplicates))
+            self.__n_vertices -= len(across_sample_duplicates)
+        else:
+            # TODO
+            logger.error("deduplication with faces were not implemented yet")
+
+    def get_vertices_list(self):
+        return list(self._vertices_list)
+
 
 
 

@@ -49,6 +49,9 @@ class Faces:
         new_face.texture_anchor_coords = deepcopy(self.texture_anchor_coords)
         return new_face
 
+    def __bool__(self):
+        return bool(len(self.vertex_ids))
+
     # def __iter__(self):
     #     for vertex_id in self.vertex_ids:
     #         yield vertex_id

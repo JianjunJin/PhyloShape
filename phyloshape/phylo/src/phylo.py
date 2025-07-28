@@ -5,7 +5,7 @@
 """
 import numpy as np
 from scipy.optimize import minimize, basinhopping
-from phyloshape.shape.src.vectors import FaceVectorMapper, VertexVectorMapper
+from phyloshape.shape.src.vectors import VertexVectorMapper
 from phyloshape.shape.src.shape import ShapeAlignment
 from phyloshape.shape.src.vertex import Vertices
 from phyloshape.phylo.src.models import *
@@ -39,7 +39,9 @@ class PhyloShape:
     def __init__(self,
                  tree_obj,
                  shape_alignments: ShapeAlignment,
-                 model=None):
+                 model=None,
+                 vect_transform=None,
+                 vect_inverse_transform=None):
         """
         :param tree_obj: TODO can be str/path/url
         :param shape_alignments: shape labels must match tree labels
@@ -51,6 +53,11 @@ class PhyloShape:
         # TODO: more models to think about
         self.model = model if model else Brownian()
         assert isinstance(self.model, MotionModel)
+        assert (vect_transform is None) == (vect_inverse_transform is None), \
+            "vect_transform and vect_inverse_transform must be used together!"
+        self.vect_transform = vect_transform
+        self.vect_inverse_transform = vect_inverse_transform
+
         self.__variables = []
         # self.vv_translator is a FaceVectorMapper, making conversion between vertices and vectors
         self.vv_translator = None
@@ -67,34 +74,57 @@ class PhyloShape:
             label, leaf_node.vertices = self.shapes[leaf_node.name]
             # logger.trace(label + str(leaf_node.vertices.coords))
 
-    def build_vv_translator(self):
-        if self.faces is None or len(self.faces) == 0:
-            # build the translator using vertices only
-            # TODO use alignment information rather than using the vertices of the first sample
+    def build_vv_translator(self, mode="network-local", num_vs=20, num_vt_iter=5):
+        """
+        """
+        self.vv_translator = None
+        # if self.faces is None or len(self.faces) == 0:
+        # build the translator using vertices only
+        # TODO use alignment information rather than using the vertices of the first sample
+        if mode == "old":
             label, vertices = self.shapes[0]
-            self.vv_translator = VertexVectorMapper(vertices)
+            from phyloshape.shape.src.vectors import VertexVectorMapperOld
+            self.vv_translator = VertexVectorMapperOld(vertices)
             logger.info(f"using {label} to construct the vector system ..")
         else:
-            # TODO: FaceVectorMapper.__init__(): auto detect face and face_v_ids
-            self.vv_translator = FaceVectorMapper(self.faces.vertex_ids)
+            self.vv_translator = VertexVectorMapper(
+                [vt.coords for lb, vt in self.shapes],
+                mode=mode,
+                num_vs=num_vs,
+                num_vt_iter=num_vt_iter,
+                )
+        # else:
+        #     self.vv_translator = FaceVectorMapper(self.faces.vertex_ids)
         len_vt = len(self.vv_translator.vh_list())
         logger.info("Vertex:Vector ({}:{}) translator built.".format(len_vt + 1, len_vt))
 
     def build_tip_vectors(self):
-        for node_id in range(self.tree.ntips):
-            leaf_node = self.tree[node_id]
-            leaf_node.vectors = self.vv_translator.to_vectors(leaf_node.vertices)
+        if self.vect_transform is None:
+            for node_id in range(self.tree.ntips):
+                leaf_node = self.tree[node_id]
+                leaf_node.vectors = self.vv_translator.to_vectors(leaf_node.vertices)
+        else:
+            vectors_list = []
+            for node_id in range(self.tree.ntips):
+                vectors_list.append(self.vv_translator.to_vectors(self.tree[node_id].vertices))
+            # transform the original vectors to modified (e.g. PCA) ones
+            for node_id, trans_vectors in enumerate(self.vect_transform(vectors_list)):
+                self.tree[node_id].vectors = trans_vectors
+            logger.info("Dimension {} -> {}".format(vectors_list[0].shape, self.tree[0].vectors.shape))
         logger.info("Vectors for {} tips built.".format(self.tree.ntips))
 
     def sym_ancestral_vectors(self):
-        n_vectors = self.shapes.n_vertices() - 1
+        # n_vectors = self.shapes.n_vertices() - 1
+        vectors_shape = self.tree[0].vectors.shape
+        n_vals = np.prod(vectors_shape)
         for node_id in range(self.tree.ntips, self.tree.nnodes):
             ancestral_node = self.tree[node_id]
             ancestral_node.vectors = \
                 ancestral_node.vectors_symbols = \
-                np.array([[Symbol("%s_%s_%s" % (_dim, node_id, go_v))
-                           for _dim in ("x", "y", "z")]
-                          for go_v in range(n_vectors)])
+                np.array([Symbol("%s_%s" % (node_id, go_v)) for go_v in range(n_vals)]).reshape(vectors_shape)
+                # np.array([[Symbol("%s_%s_%s" % (_dim, node_id, go_v))
+                #            for _dim in ("x", "y", "z")]
+                #           for go_v in range(n_vectors)])
         logger.info("Vectors for {} ancestral nodes symbolized.".format(self.tree.nnodes - self.tree.ntips))
 
     def formularize_log_like(self, log_func):
@@ -145,10 +175,12 @@ class PhyloShape:
         model_params = self.__result.x[:go_p]
         logger.info(", ".join(["%s=%f" % (_s, _v) for _s, _v in zip(model_params_signs, model_params)]))
         # 2. assign second part of the result.x to ancestral shape vectors
-        n_vts = self.shapes.n_vertices() - 1
+        # n_vts = self.shapes.n_vertices() - 1
+        vectors_shape = self.tree[0].vectors.shape
+        n_vals = np.prod(vectors_shape)
         for anc_node_id in range(self.tree.ntips, self.tree.nnodes):
-            to_p = go_p + 3 * n_vts
-            self.tree[anc_node_id].vectors = np.array(self.__result.x[go_p: to_p]).reshape(-1, 3)
+            to_p = go_p + n_vals
+            self.tree[anc_node_id].vectors = np.array(self.__result.x[go_p: to_p]).reshape(vectors_shape)
             go_p = to_p
 
     def minimize_negloglike(self, num_proc=1):
@@ -205,15 +237,27 @@ class PhyloShape:
             raise Exception("optimization failed!")  # TODO: find the error object from scipy
 
     def build_ancestral_vertices(self):
-        for anc_node_id in range(self.tree.ntips, self.tree.nnodes):
-            self.tree[anc_node_id].vertices = Vertices(self.vv_translator.to_vertices(self.tree[anc_node_id].vectors))
+        if self.vect_inverse_transform is None:
+            for anc_node_id in range(self.tree.ntips, self.tree.nnodes):
+                self.tree[anc_node_id].vertices = \
+                    Vertices(self.vv_translator.to_vertices(self.tree[anc_node_id].vectors))
+        else:
+            for anc_node_id in range(self.tree.ntips, self.tree.nnodes):
+                real_vectors = self.vect_inverse_transform(self.tree[anc_node_id].vectors)
+                self.tree[anc_node_id].vertices = \
+                    Vertices(self.vv_translator.to_vertices(real_vectors))
 
-    def reconstruct_ancestral_shapes_using_ml(self, num_proc: int = 1):
+    def reconstruct_ancestral_shapes_using_ml(
+            self,
+            mode="network-local",
+            num_vs: int = 20,
+            num_vt_iter: int = 5,
+            num_proc: int = 1):
         """
         maximum likelihood approach
         :return:
         """
-        self.build_vv_translator()
+        self.build_vv_translator(mode, num_vs=num_vs, num_vt_iter=num_vt_iter)
         self.build_tip_vectors()
         self.sym_ancestral_vectors()
         self.formularize_log_like(log_func=s_log)
@@ -221,6 +265,12 @@ class PhyloShape:
         self.minimize_negloglike(num_proc=1)  # multiprocessing not working yet
         self.build_ancestral_vertices()
 
+    def reconstruct_ancestral_shapes_using_gpa(self):
+        """
+        :return:
+        """
+        # TODO
+        pass
 
 
 

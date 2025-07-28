@@ -9,7 +9,7 @@ from collections import OrderedDict
 from copy import deepcopy
 import random
 import numpy as np
-from numpy.typing import ArrayLike
+from numpy.typing import ArrayLike, NDArray
 from phyloshape.utils import trans_vector_to_relative, trans_vector_to_absolute
 from phyloshape.utils.src.vertices_manipulator import find_duplicates_in_vertices_list
 from phyloshape.utils.src.stats import mean_without_outliers
@@ -398,19 +398,19 @@ class VMapper:
         self._vh_bundle_list.append(vh_bundle)
         self._shape.append(len(vh_bundle))
 
-    def to_vectors(self, vertices: ArrayLike) -> ArrayLike:
+    def to_vectors(self, vertices: NDArray[np.float32]) -> NDArray[np.float32]:
         """
         Based on the vh_bundle_list information, it takes vertices of a shape to generate representative vectors.
 
         Parameters
         ----------
-        vertices:
+        vertices: NDArray[np.float32]
             Array of triangle vertices: float (x, y, z) coordinate triplets.
 
         Returns
         -------
-        vectors
-            ArrayLike
+        vectors: NDArray[np.float32]
+            Array of vectors: float (x, y, z) coordinate triplets.
         """
         assert len(vertices) == len(self._shape) - self.num_vs + 1, \
             "The length of the vertices ({}) must be (num_vs-1)-units i.e. {}-units " \
@@ -464,10 +464,14 @@ class VMapper:
         except TypeError:  # for testing and being compatible with sympy
             return vectors
 
-    def to_vertices(self, vectors) -> ArrayLike:
+    def to_vertices(self, vectors: NDArray[np.float32], weights: NDArray[np.float32] = None) -> NDArray[np.float32]:
         assert len(vectors) == sum(self._shape), \
             "The length of the vectors ({}) must equal the length of vector handlers ({})!".format(
                 len(vectors), sum(self._shape))
+        if weights is not None:
+            assert len(vectors) == len(weights), "vectors: {}; weights: {}".format(vectors.shape, weights.shape)
+        else:
+            weights = np.ones(vectors.shape)
         len_vertices = len(self._shape) - self.num_vs + 1
         vertices = np.full((len_vertices, 3), np.nan, dtype=np.float64)
 
@@ -484,10 +488,18 @@ class VMapper:
         second_vh_bundle = self._vh_bundle_list[1]
         # vertices[second_vh_bundle[0].to_id] = np.median([vertices[vh.from_id] + vectors[go_v + go_h]
         #                                                  for go_h, vh in enumerate(second_vh_bundle)], axis=0)
+
         # using mean without outliers does not work!
-        here_vertices = [vertices[vh.from_id] + vectors[go_v + go_h] for go_h, vh in enumerate(second_vh_bundle)]
-        here_vertices = np.array(here_vertices, dtype=np.float64)
-        vertices[second_vh_bundle[0].to_id] = [mean_without_outliers(here_vertices[:, i]) for i in range(3)]
+        # here_vertices = [vertices[vh.from_id] + vectors[go_v + go_h] for go_h, vh in enumerate(second_vh_bundle)]
+        # here_vertices = np.array(here_vertices, dtype=np.float64)
+        # vertices[second_vh_bundle[0].to_id] = [mean_without_outliers(here_vertices[:, i]) for i in range(3)]
+
+        # weighted using weights 2023-05-31
+        vertices[second_vh_bundle[0].to_id] = np.average([vertices[vh.from_id] + vectors[go_v + go_h]
+                                                          for go_h, vh in enumerate(second_vh_bundle)],
+                                                         weights=weights[go_v: go_v + self._shape[1]],
+                                                         axis=0)
+
         go_v += self._shape[1]
 
         # following vh bundle requires converting relative vectors to absolute vectors
@@ -495,16 +507,17 @@ class VMapper:
         for go_b, vh_bundle in enumerate(self._vh_bundle_list[2:-self.num_vs]):
             v_len = self._shape[2 + go_b]
             relative_vectors = vectors[go_v: go_v + v_len]
+            here_wt = weights[go_v: go_v + v_len]
             go_v += v_len
             self.__update_vertex_with_vh_bundle(
-                vh_bundle=vh_bundle, relative_vectors=relative_vectors, vertices=vertices)
+                vh_bundle=vh_bundle, relative_vectors=relative_vectors, weights=here_wt, vertices=vertices)
 
         self._debug_vertices.append(vertices)
-        new_vertices = self.__updating_vertices(vertices=vertices, vectors=vectors)
+        new_vertices = self.__updating_vertices(vertices=vertices, vectors=vectors, weights=weights)
 
         return new_vertices
 
-    def __updating_vertices(self, vertices, vectors):
+    def __updating_vertices(self, vertices, vectors, weights):
         # TODO probably using GPA to verify convergence
         # iteratively refine the vertices
         len_vertices = len(vertices)
@@ -522,10 +535,14 @@ class VMapper:
             new_vectors = np.concatenate((vectors[-self.num_vs ** 2:],
                                           vectors[-len_vertices * self.num_vs: -self.num_vs ** 2]),
                                          axis=0)
+            new_weights = np.concatenate((weights[-self.num_vs ** 2:],
+                                          weights[-len_vertices * self.num_vs: -self.num_vs ** 2]),
+                                         axis=0)
             for go_b, vh_bundle in enumerate(new_bundle_list):
                 relative_vectors = new_vectors[go_b * self.num_vs: (go_b + 1) * self.num_vs]
+                here_wt = new_weights[go_b * self.num_vs: (go_b + 1) * self.num_vs]
                 self.__update_vertex_with_vh_bundle(
-                    vh_bundle=vh_bundle, relative_vectors=relative_vectors, vertices=new_vertices)
+                    vh_bundle=vh_bundle, relative_vectors=relative_vectors, vertices=new_vertices, weights=here_wt)
             vt_status.append(new_vertices.copy())
             self._debug_vertices.append(vt_status[-1])
             # TODO better convergence approach and verify that it always converges
@@ -535,7 +552,7 @@ class VMapper:
         logger.debug("total num of iterations: {}".format(len(vt_status) - 1))
         return new_vertices
 
-    def __update_vertex_with_vh_bundle(self, vh_bundle, relative_vectors, vertices):
+    def __update_vertex_with_vh_bundle(self, vh_bundle, relative_vectors, weights, vertices):
         """ Update one vertex per vh_bundle
         :param vh_bundle:
         :param relative_vectors:
@@ -552,7 +569,11 @@ class VMapper:
         # vertices[vh_bundle[0].to_id] = np.median(new_triplets, axis=0)
         # using mean without outliers does not work!
         new_triplets = np.array(new_triplets, dtype=np.float64)
-        vertices[vh_bundle[0].to_id] = [mean_without_outliers(new_triplets[:, i]) for i in range(3)]
+
+        # weight
+        vertices[vh_bundle[0].to_id] = np.average(new_triplets, weights=weights, axis=0)
+
+        # vertices[vh_bundle[0].to_id] = [mean_without_outliers(new_triplets[:, i]) for i in range(3)]
         # self._debug_vertices.append(new_triplets)
 
     def vh_list(self):
@@ -731,13 +752,13 @@ class VertexVectorMapperOld(VMapperOld):
 
     def __update(
             self,
-            triplets_list: ArrayLike or List[ArrayLike]):
+            triplets_list: NDArray[np.float32]):
         """
         Build the maps between the dispersed vertices system and the vector system.
 
         Parameters
         ----------
-        triplets_list: ArrayLike or List[ArrayLike]
+        triplets_list: NDArray[np.float32]
             Must be coordinates of Vertices.
         """
         self.__unfixed_vertex_ids = OrderedDict([(_id, None) for _id in range(len(triplets_list))])
@@ -824,7 +845,7 @@ class VertexVectorMapper(VMapper):
         Parameters
         ----------
         input_obj_list:
-            A list of ArrayLike or Vertices (with coords) objects.
+            A list of NDArray[np.float32] or Vertices (with coords) objects.
         mode: str
             mode of building the mapper. Under test and development, so it was not fixed yet.
         random_seed: int

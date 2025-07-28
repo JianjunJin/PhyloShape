@@ -4,8 +4,8 @@
 
 """
 import numpy as np
-from numpy.typing import ArrayLike
-from typing import List
+from numpy.typing import ArrayLike, NDArray
+from typing import List, Tuple
 from loguru import logger
 from phyloshape.utils.src.vector_manipulator import gen_unit_perpendicular_v
 from scipy.spatial import procrustes
@@ -16,22 +16,22 @@ import random
 
 
 # def uniform_vertices(
-#         vertices: ArrayLike,
-#         ref_face_points: List[ArrayLike])\
-#         -> ArrayLike:
+#         vertices: NDArray[np.float32],
+#         ref_face_points: List[NDArray[np.float32]])\
+#         -> NDArray[np.float32]:
 #     """
 #     This function transforms ...
 #
 #     Parameters
 #     ----------
-#     vertices: ArrayLike[np.float32]
+#     vertices: NDArray[np.float32]
 #         Array of triangle vertices: float (x, y, z) coordinate triplets.
-#     ref_face_points: List[ArrayLike[np.float32]]
-#         List of three coordinate triplets, each is an arrays of np.float32 (x, y, z)
+#     ref_face_points: List[NDArray[np.float32]]
+#         List of three coordinate triplets, each is an array of np.float32 (x, y, z)
 #
 #     Returns
 #     -------
-#     ArrayLike[np.float32]
+#     NDArray[np.float32]
 #         Array of triangle vertices: float (x, y, z) coordinate triplets.
 #     """
 #     #######
@@ -97,22 +97,22 @@ def find_duplicates_in_vertices_list(_vertices_list: List):
 
 
 def unscaled_procrustes(
-        reference: ArrayLike,
-        coordinates: ArrayLike,
+        reference: NDArray[np.float32],
+        coordinates: NDArray[np.float32],
         ):
     """
     Uses only translation, reflection, and orthogonal rotation.
 
     Parameters
     ----------
-        reference (array-like of Vertices (n_points, n_dim)): reference Vertices to transform `coordinates`
-        coordinates (array-like of Vertices (n_points, n_dim)): shape to align to `reference`
+        reference (NDArray[np.float32] of Vertices (n_points, n_dim)): reference Vertices to transform `coordinates`
+        coordinates (NDArray[np.float32] of Vertices (n_points, n_dim)): shape to align to `reference`
 
     Returns
     ----------
-    coordinates: (np.ndarray of vertices (n_points, n_dim))
+    coordinates: (NDArray[np.float32] of vertices (n_points, n_dim))
         transformed `coordinates` matrix
-    reference: (np.ndarray of vertices (n_points, n_dim))
+    reference: (NDArray[np.float32] of vertices (n_points, n_dim))
         0-centered `reference` matrix
     """
     # Convert inputs to np.ndarray types

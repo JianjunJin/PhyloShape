@@ -8,7 +8,7 @@ import random
 from loguru import logger
 import numpy as np
 from phyloshape.utils import COORD_TYPE, ID_TYPE
-from numpy.typing import ArrayLike
+from numpy.typing import ArrayLike, NDArray
 from typing import Union, List, Dict
 from copy import deepcopy
 from collections import OrderedDict
@@ -18,8 +18,8 @@ logger = logger.bind(name="phyloshape")
 
 class IdNetwork:
     def __init__(self,
-                 pairs: Union[ArrayLike, List, None] = None,
-                 edge_lens: Union[ArrayLike, List, None] = None):
+                 pairs: Union[NDArray[np.uint32], List, None] = None,
+                 edge_lens: Union[NDArray[np.float32], List, None] = None):
         """
         :param pairs: the ids of two ends of edges
         :param edge_lens: the lengths of edges

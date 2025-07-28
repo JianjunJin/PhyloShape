@@ -9,6 +9,7 @@ from PIL import Image
 import numpy as np
 from copy import deepcopy
 from typing import Union, List, Tuple
+from numpy.typing import ArrayLike, NDArray
 from phyloshape.shape.src.face import Faces
 from phyloshape.shape.src.vertex import Vertices
 from phyloshape.shape.src.network import IdNetwork
@@ -107,7 +108,7 @@ class Shape:
                 if line[0] == "v":
                     if len(line) == 4:
                         vertex_coords.append([float(i) for i in line[1:4]])
-                        vertex_colors.append([None] * 3)
+                        # vertex_colors.append([None] * 3)
                     elif len(line) == 7:
                         vertex_coords.append([float(i) for i in line[1:4]])
                         vertex_colors.append([float(i) for i in line[4:]])
@@ -136,7 +137,7 @@ class Shape:
             self.texture_image_data = np.asarray(self.texture_image_obj)
         self.vertices = Vertices(coords=vertex_coords,
                                  # TODO check vertex_colors if it's None
-                                 colors=np.round(np.array(vertex_colors) * 255))
+                                 colors=np.round(np.array(vertex_colors) * 255) if vertex_colors else None)
         self.faces = Faces(vertex_ids=face_v_indices,
                            # vertices=self.vertices,
                            texture_ids=face_t_indices,
@@ -160,29 +161,48 @@ class Shape:
         The connected components were sorted decreasingly by the number of vertices,
         so that the first component (component_id=0) is the largest component.
 
-        :param component_id:
-        :return: Shape
+        Parameters
+        ----------
+        component_id
+
+        Returns
+        -------
+        new_shape
         """
         sorted_components = sorted(self.network.find_unions(), key=lambda x: (-len(x), x))
         if isinstance(component_id, int):
             chosen_v_ids = sorted(sorted_components[component_id])
         else:
             chosen_v_ids = sorted(set.union(*sorted_components[component_id]))
+        new_shape = self.grab_a_piece(grab_v_ids=chosen_v_ids)
+        return new_shape
+
+    def grab_a_piece(self, grab_v_ids: NDArray[np.uint32]):
+        """Extract a piece off the original mesh shape.
+
+        Parameters
+        ----------
+        grab_v_ids: NDArray[np.uint32]
+            Array of vertices ids in the new mesh shape.
+        Returns
+        -------
+        new_shape
+        """
         new_shape = Shape()
         # only keep the chosen vertex ids
         if self.vertices.colors is None or not len(self.vertices.colors):
-            new_shape.vertices.coords = self.vertices[chosen_v_ids]
+            new_shape.vertices.coords = self.vertices[grab_v_ids]
         else:
-            new_shape.vertices.coords, new_shape.vertices.colors = self.vertices[chosen_v_ids]
+            new_shape.vertices.coords, new_shape.vertices.colors = self.vertices[grab_v_ids]
         # deepcopy the original faces object
         new_shape.faces = deepcopy(self.faces)
         # find the faces that contains any unwanted vertex ids, and assign the ids to rm_f_ids, then delete them
         face_v_ids = new_shape.faces.vertex_ids
-        rm_f_ids = np.isin(face_v_ids, chosen_v_ids, invert=True).any(axis=1)
+        rm_f_ids = np.isin(face_v_ids, grab_v_ids, invert=True).any(axis=1)
         face_v_ids = np.delete(face_v_ids, rm_f_ids, axis=0)
         # modify the v ids in the faces, because some vertices were removed
         # using the np.unique() approach here will be much faster than using np.vectorize(dict.__getitem__)()
-        v_id_translator = {old_id: new_id for new_id, old_id in enumerate(chosen_v_ids)}
+        v_id_translator = {old_id: new_id for new_id, old_id in enumerate(grab_v_ids)}
         uniq, inv = np.unique(face_v_ids, return_inverse=True)
         new_shape.faces.vertex_ids = np.array([v_id_translator[o_i] for o_i in uniq])[inv].reshape(face_v_ids.shape)
         # also delete associated texture ids

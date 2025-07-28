@@ -10,4 +10,4 @@ Examples
 """
 
 from phyloshape.phylo.src.phylo import PhyloShape
-from phyloshape.phylo.src.models import Brownian
+from phyloshape.phylo.src.models import Brownian, MultivariateBrownian

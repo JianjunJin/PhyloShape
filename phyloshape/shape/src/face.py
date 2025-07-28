@@ -9,7 +9,7 @@ import numpy as np
 from copy import deepcopy
 from phyloshape.utils import ID_TYPE, COORD_TYPE, RGB_TYPE
 # from phyloshape.shape.src.vertex import Vertices
-from numpy.typing import ArrayLike
+from numpy.typing import ArrayLike, NDArray
 from typing import Union, List, Generator
 from loguru import logger
 logger = logger.bind(name="phyloshape")
@@ -17,12 +17,12 @@ logger = logger.bind(name="phyloshape")
 
 class Faces:
     def __init__(self,
-                 # TODO specify the dimension of the input array/list
-                 vertex_ids: Union[ArrayLike, List, None] = None,
+                 # Dimension of the input array/list is specified in the type hints
+                 vertex_ids: Union[NDArray[np.uint32], List, None] = None,
                  # vertices: Vertices = None,
-                 texture_ids: Union[ArrayLike, List, None] = None,
-                 texture_anchor_percent_coords: Union[ArrayLike, List, None] = None,
-                 texture_image_data: ArrayLike = None):
+                 texture_ids: Union[NDArray[np.uint32], List, None] = None,
+                 texture_anchor_percent_coords: Union[NDArray[np.float32], List, None] = None,
+                 texture_image_data: NDArray[np.uint8] = None):
         self.vertex_ids = np.array([], dtype=ID_TYPE) if vertex_ids is None else np.array(vertex_ids, dtype=ID_TYPE)
         # self.__vertices = Vertices() if vertices is None else vertices
         self.texture_ids = np.array([], dtype=ID_TYPE) if texture_ids is None else np.array(texture_ids, dtype=ID_TYPE)
@@ -52,6 +52,7 @@ class Faces:
     def __bool__(self):
         return bool(len(self.vertex_ids))
 
+    # TODO think about data structure and usability
     # def __iter__(self):
     #     for vertex_id in self.vertex_ids:
     #         yield vertex_id
@@ -76,7 +77,7 @@ class Faces:
         bi-coordinates (coord_type==texture) of the three points of a face.
 
         # :param coord_type: vertex (default) or texture
-        :return: Generator[ArrayLike[ArrayLike, ArrayLike, ArrayLike]]
+        :return: Generator[NDArray[np.float32]]
         """
         # if coord_type == "vertex":
         #     for vertex_id in self.vertex_ids:

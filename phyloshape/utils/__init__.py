@@ -10,3 +10,4 @@ from phyloshape.utils.src.color_manipulator import *
 from phyloshape.utils.src.exceptions import *
 from phyloshape.utils.src.variables import *
 from phyloshape.utils.src.io import *
+from phyloshape.utils.src.visualize import visualize_3d_over_tree

@@ -30,7 +30,10 @@ class ColorProfile:
         chosen_ids = list(np.random.randint(low=0, high=max_id, size=sim_num)) + user_defined_vertices
         dist_val_sort = sorted(dist_values, reverse=True)
         logger.info("searching")
-        progress_1 = ProgressLogger(n_start_vertices)
+        try:
+            progress_1 = ProgressLogger(n_start_vertices)
+        except ModuleNotFoundError:
+            progress_1 = None
         progress_1a = ProgressText(n_start_vertices)
         for v_id in chosen_ids:
             # cutoff = max(dist_val_sort)
@@ -54,15 +57,20 @@ class ColorProfile:
                 neighboring_colors = shape.vertices.colors[neighbor_ids]
                 color_vars = abs(np.array(neighboring_colors, dtype=OP_RGB_TYPE) - this_color)
                 res_var_dict[dist_group].append(np.array(np.max(color_vars, axis=0), dtype=RGB_TYPE))
-            progress_1.update()
+            if progress_1 is not None:
+                progress_1.update()
             progress_1a.update()
 
         logger.info("summarizing")
-        progress_2 = ProgressLogger(len(dist_values))
+        try:
+            progress_2 = ProgressLogger(len(dist_values))
+        except ModuleNotFoundError:
+            progress_2 = None
         progress_2a = ProgressText(len(dist_values))
         for dist_group, res_var in res_var_dict.items():
             res_var_dict[dist_group] = np.array(res_var, dtype=RGB_TYPE)
-            progress_2.update()
+            if progress_2 is not None:
+                progress_2.update()
             progress_2a.update()
 
         return res_var_dict
